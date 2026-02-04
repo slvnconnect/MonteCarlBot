@@ -4,6 +4,32 @@ const { Mistral } = require('@mistralai/mistralai');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
+
+const app = express();
+
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot en ligne ✅');
+});
+
+app.listen(PORT, () => {
+  console.log(`Serveur écoute sur le port ${PORT}`);
+});
+
+setInterval(async () => {
+  try {
+    const res = await fetch(`http://localhost:${PORT}`);
+    if (res.ok) {
+      console.log('Ping interne OK');
+    } else {
+      console.log('Ping interne échoué, status:', res.status);
+    }
+  } catch (err) {
+    console.log('Ping interne échoué', err.message);
+  }
+}, 5 * 60 * 1000); // toutes les 5 minutes
 
 // =====================
 // CONFIG

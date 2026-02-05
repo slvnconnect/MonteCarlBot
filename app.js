@@ -152,28 +152,42 @@ async function generate(chatId, userText, prompt) {
 async function startBot() {
 
     const menu = `
-Poulet Maillo entier 6500 
-Poulet Maillo moitié 4000
-Choukouya entier 6500
-Choukouya moitié 4000
-Tilapia braisés plat moitié 3000 donne droit a 2tilapia 
-Tilapia braisés plat entier  donne droit a 4tilapia 6000
-Lapin braisé entier 7000
-Lapin braisé moitié 4000
+Poulet Mayo entier + accompagnement + livraison 6500
+Poulet Mayo moitié + accompagnement offert + livraison  4000
+Choukouya entier + accompagnement + livraison 6500
+Choukouya moitié + accompagnement + livraison 4000
+Tilapia braisé plat moitié 4000 donne droit a 1 gros tilapia+ livraison et accompagnement 
+Tilapia braisé plat entier donne droit a 2 gros tilapias  6000 + accompagnement + livraison 
+Lapin braisé entier + accompagnement + livraison 7000
+Lapin braisé moitié + accompagnement + livraison 4000
 Sauce d'arachide igname pilée ou pate noir 4000f le plat
 Sauce graine igname pilée ou pate noire 4000f le plat
 Chawarma 2000
-Attièkè poulet ou lapin aloco 5000f le plat entier
-Jus d'ananas , bissap , menthe au lait 500
+Attièkè poulet ou lapin aloco 5000f le plat entier 3000 le plat moitié 
+Jus d'ananas 500 , bissape 500, menthe au lait 700
+Café au lait 700, Baobab au lait 700
 Légumes 300g a 500f
-Poulet frais 2700f le kilo 
-Lapin frais 3500f le kilo 
-Gésier 2500f le kilo 
-Plateau d'oeufs 2400f 
+Poulet frais 2700f le kilo, 3300, 1,3 kg 4000 1,5 kg, 6000 1,8 kg
+Lapin frais 3500f le kilo
+Gésier 2500f le kilo
+Plateau d'oeufs 2400f
 Tilapia frais 2700f le kg
-Pate et cou  de poulet  700f le kilo
- Reste pour chien 700f le kilo
+Pattes et cous de poulet 700f le kilo
+Reste pour chien 700f le kilo
 Lait caillé 600f
+
+Nous proposons les accompagnements suivants :
+Liste des accompagnements. 
+•⁠  ⁠Frites 
+•⁠  ⁠Amiwo 
+•⁠  ⁠Akassa
+•⁠  ⁠Igname frites 
+•⁠  ⁠Patate douce frites 
+•⁠  ⁠Attiéké
+•⁠  ⁠Plantain aloco
+•    Piron 
+
+Un accompagnement supplementaire coute 700. 1 accomapgnement est offert par plat. Nous ne faisons pas de melange au niveau des accompagnements.
 `;
 
     const prompt = `
@@ -196,6 +210,8 @@ Tu te comportes comme un employé humain sérieux, poli et chaleureux.
 - Ne répète jamais inutilement les informations
 - Ne change jamais de sujet sans raison
 - Ne contredis jamais les règles ci-dessous
+-Tu ne parle jamais à la première personne du singulier mais toujours à la première personne du pluriel (nous)
+-Tu renvoie un menu cool reformulé
 
 ━━━━━━━━━━━━━━━━━━
 ✨ STICKERS / EMOJIS

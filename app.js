@@ -131,7 +131,7 @@ async function generate(chatId, userText, prompt) {
     const messages = [
         { role: "system", content: prompt },
         ...history,
-        { role: "user", content: "Réponds STRICTEMENT en JSON tableau. " + userText }
+        { role: "user", content :  userText }
     ];
 
     let res;
@@ -363,6 +363,8 @@ Horaires d’ouverture : 9h a 21h tous les jours
 
 Téléphone du restaurant (plainte ou info dépassant ton rôle) : 0166577174
 
+Reponds toujours strictement en tableau Json
+
 ━━━━━━━━━━━━━━━━━━
 🚫 INTERDICTIONS STRICTES
 ━━━━━━━━━━━━━━━━━━
@@ -462,6 +464,7 @@ Ne jamais répondre hors JSON`; // ton prompt complet ici
                 if (item.type === "text") {
                     await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
                     await sock.sendMessage(chatId, { text: item.text });
+                    console.log("Réponse IA > :" , item.text)
                 }
                 if (item.type === "commande") {
                     await insertRow({ chat_id: chatId, role: "assistant", content: 'Commande lancée' + JSON.stringify(item) });

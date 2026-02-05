@@ -1,15 +1,30 @@
 const { default: makeWaSocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 const { Mistral } = require('@mistralai/mistralai');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+let qrCodeData = null; // stocke le QR code pour l'URL
+
 app.get('/', (req, res) => res.send('Bot en ligne ✅'));
+
+// Route pour accéder au QR code en image
+app.get('/qr', (req, res) => {
+    if (!qrCodeData) return res.send('QR code non généré pour le moment');
+    const base64Data = qrCodeData.replace(/^data:image\/png;base64,/, '');
+    const img = Buffer.from(base64Data, 'base64');
+    res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': img.length
+    });
+    res.end(img);
+});
+
 app.listen(PORT, () => console.log(`Serveur écoute sur le port ${PORT}`));
 
 // =====================
@@ -29,10 +44,10 @@ function isAnotherInstanceRunning() {
     if (!fs.existsSync(LOCK_FILE)) return false;
     try {
         const pid = parseInt(fs.readFileSync(LOCK_FILE, 'utf-8'));
-        process.kill(pid, 0); // Vérifie si le processus est actif
+        process.kill(pid, 0);
         return true;
     } catch {
-        return false; // Processus mort
+        return false;
     }
 }
 
@@ -181,7 +196,7 @@ Attièkè poulet ou lapin aloco 5000f le plat entier 3000 le plat moitié
 Jus d'ananas 500 , bissape 500, menthe au lait 700
 Café au lait 700, Baobab au lait 700
 Légumes 300g a 500f
-Poulet frais 2700f le kilo, 3300, 1,3 kg 4000 1,5 kg, 6000 1,8 kg
+Poulet frais 2700f le kilo, 3300f pour 1,3 kg , 4000f pour 1,5 kg , 6000 pour 1,8 kg
 Lapin frais 3500f le kilo
 Gésier 2500f le kilo
 Plateau d'oeufs 2400f
@@ -202,7 +217,8 @@ Liste des accompagnements.
 •    Piron
 
 Un accompagnement supplementaire coute 700. 1 accomapgnement est offert par plat. Nous ne faisons pas de melange au niveau des accompagnements.
-    `; // ton menu ici
+    `;
+
     const prompt = `
 Tu es l’assistant officiel du restaurant MONTECARL AGROALIMENTAIRE.
 Tu te comportes comme un employé humain sérieux, poli et chaleureux.
@@ -217,6 +233,7 @@ Donner les horaires et la localisation du restaurant
 
 Accompagner le client jusqu’à confirmation finale
 
+Tu n'envoie pas plusieurs textes à la fois dans le même tableau json (au plus 3 text)
 
 ━━━━━━━━━━━━━━━━━━
 📌 COMPORTEMENT GÉNÉRAL
@@ -228,14 +245,14 @@ Concis, clair et chaleureux
 
 Strictement dans le cadre professionnel du restaurant
 
-Si le client sort du cadre professionnel, réponds poliment que tu travailles uniquement dans ce cadre
+Si le client sort du cadre professionnel, réponds poliment que tu ne travailles uniquement dans ce cadre
 
 Ne répète jamais inutilement les informations
 
 Ne change jamais de sujet sans raison
 
 Ne contredis jamais les règles ci-dessous
--Tu ne parle jamais à la première personne du singulier mais toujours à la première personne du pluriel (nous)
+-Tu ne parle jamais à la première personne du singulier mais toujours à la première personne du pluriel
 -Tu renvoie un menu cool reformulé
 
 
@@ -250,7 +267,6 @@ Emojis légers et adaptés : accueil, menu, commande, confirmation
 Aucun emoji dans les données de commande
 
 Jamais d’emojis excessifs ou enfantins
-
 
 ━━━━━━━━━━━━━━━━━━
 👋 ACCUEIL CHALEUREUX
@@ -268,7 +284,6 @@ Exemple :
 }
 ]
 
-
 ━━━━━━━━━━━━━━━━━━
 📦 FORMAT DE RÉPONSE STRICT
 ━━━━━━━━━━━━━━━━━━
@@ -280,7 +295,6 @@ AUCUN texte hors JSON
 Utilise \n pour les retours à la ligne
 
 Ne jamais envoyer de texte brut hors JSON
-
 
 Format texte simple :
 [
@@ -299,7 +313,6 @@ Ne jamais inventer un plat ou un prix
 
 Si une info n’est pas dans le menu fourni, dire clairement que tu ne l’as pas
 
-
 Menu :
 ${menu}
 
@@ -308,7 +321,6 @@ ${menu}
 ━━━━━━━━━━━━━━━━━━
 N’initie la prise des informations et des plats que si l’utilisateur indique clairement qu’il souhaite passer une commande (exemples : "Je veux commander", "Passer une commande", "Commander maintenant").
 
-Si l’utilisateur parle d’autre chose ou consulte juste le menu, ne demande jamais le nom, téléphone, adresse ou commande.
 Avant toute commande, tu DOIS avoir :
 
 Nom du client
@@ -319,25 +331,11 @@ Adresse de livraison
 
 Détails précis de la commande
 
-
 Zone de livraison gratuite : Cotonou , Calavi
 
 En dehors de ces deux zones la livraison est a 1000f
 
 Mentionne a l'utilisateur que seul Cotonou et Calavi sont gratuits 
-
-━━━━━━━━━━━━━━━━━━
-✅ CONFIRMATION OBLIGATOIRE
-━━━━━━━━━━━━━━━━━━
-
-Reformuler toujours la commande clairement
-
-Demander explicitement confirmation avant d’envoyer
-
-Tant que non confirmé → aucune commande envoyée
-
-Une fois envoyée → ne jamais envoyer une autre commande
-
 
 Format commande (une seule fois) :
 [
@@ -377,7 +375,10 @@ Ne jamais envoyer plusieurs commandes
 
 Ne jamais sortir du contexte de la discussion
 
-Ne jamais répondre hors JSON`; // ton prompt complet ici
+Ne jamais répondre hors JSON
+
+-Ne jamais inventer de données 
+`;
 
     await downloadAuthFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -392,10 +393,10 @@ Ne jamais répondre hors JSON`; // ton prompt complet ici
         await uploadAuthToSupabase();
     });
 
-    sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
         if (qr) {
-            console.log('📲 Scanner ce QR code :');
-            qrcode.generate(qr, { small: true });
+            qrCodeData = await QRCode.toDataURL(qr);
+            console.log('📲 QR code mis à jour ! Accessible sur /qr');
         }
 
         if (connection === 'close') {
@@ -411,8 +412,13 @@ Ne jamais répondre hors JSON`; // ton prompt complet ici
         if (connection === 'open') console.log('✅ Bot connecté avec succès');
     });
 
-    setInterval(() => {
-        try { sock.sendPresenceUpdate('available', 'status@broadcast'); } 
+    setInterval(async() => {
+        try {
+            if(sock.user){
+           await sock.sendPresenceUpdate('available', 'status@broadcast');
+            }
+        
+        } 
         catch(e) { console.log('Ping failed, socket peut être déconnecté'); }
     }, 30000);
 
@@ -424,34 +430,25 @@ Ne jamais répondre hors JSON`; // ton prompt complet ici
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (!text) return;
         
-          // ===========================
-    // 1️⃣ Ignorer les "status" (statuts WhatsApp)
-    // ===========================
-    if (msg.key.participant === 'status@broadcast') return;
+        if (msg.key.participant === 'status@broadcast') return;
 
-    // ===========================
-    // 2️⃣ Détecter les messages non-textes
-    // =========================
+        const mediaTypes = [
+            'imageMessage',
+            'videoMessage',
+            'audioMessage',
+            'stickerMessage',
+            'documentMessage',
+            'contactMessage',
+            'locationMessage'
+        ];
 
-    // Liste des types médias à ignorer
-    const mediaTypes = [
-        'imageMessage',
-        'videoMessage',
-        'audioMessage',
-        'stickerMessage',
-        'documentMessage',
-        'contactMessage',
-        'locationMessage'
-    ];
-
-    const hasMedia = mediaTypes.some(type => msg.message[type]);
-    if (hasMedia) {
-        await sock.sendMessage(chatId, { 
-            text: "⚠️ Désolé, je ne peux traiter que des messages texte pour le moment. Merci de réécrire votre message en texte." 
-        });
-        return;
-    }
-    
+        const hasMedia = mediaTypes.some(type => msg.message[type]);
+        if (hasMedia) {
+            await sock.sendMessage(chatId, { 
+                text: "⚠️ Désolé, je ne peux traiter que des messages texte pour le moment. Merci de réécrire votre message en texte." 
+            });
+            return;
+        }
 
         try {
             console.log("Message reçu de", chatId, ":", text);

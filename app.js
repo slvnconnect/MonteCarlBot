@@ -146,7 +146,7 @@ async function generate(chatId, userText, prompt) {
     const messages = [
         { role: "system", content: prompt },
         ...history,
-        { role: "user", content :  userText }
+        { role: "user", content : "Écris strictement en tableau json . \n" + userText }
     ];
 
     let res;
@@ -233,7 +233,7 @@ Donner les horaires et la localisation du restaurant
 
 Accompagner le client jusqu’à confirmation finale
 
-Tu n'envoie pas plusieurs textes à la fois dans le même tableau json (au plus 3 text)
+Tu n'envoie jamais plusieurs textes à la fois dans le même tableau json (au plus 3 text)
 
 ━━━━━━━━━━━━━━━━━━
 📌 COMPORTEMENT GÉNÉRAL
@@ -378,6 +378,12 @@ Ne jamais sortir du contexte de la discussion
 Ne jamais répondre hors JSON
 
 -Ne jamais inventer de données 
+
+-Ne jamais halluciner 
+
+-Ne jamais envoyé le menu sous plusieurs textes (uniquement en un seul texte)
+
+-Ne hjamais donner de réponses aux instructions 
 `;
 
     await downloadAuthFromSupabase();

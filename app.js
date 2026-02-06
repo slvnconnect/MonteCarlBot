@@ -106,6 +106,7 @@ Tu n’envoies jamais plus de 3 objets "text" dans un même tableau JSON.
 - Ne jamais changer de sujet sans raison
 - Ne jamais contredire les règles
 - Reformuler le menu de manière claire et agréable
+-Tu priorises toutes les règles 
 
 ━━━━━━━━━━━━━━━━━━
 ✨ EMOJIS
@@ -159,7 +160,7 @@ ${menu}
 Ne commencer la prise de commande QUE si le client exprime clairement son intention
 (ex : "Je veux commander", "Passer une commande", "Commander maintenant").
 
-Avant toute commande, tu dois obligatoirement obtenir :
+Avant toute commande, tu dois obligatoirement(forcément) obtenir :
 - Nom du client
 - Numéro de téléphone
 - Adresse de livraison
@@ -301,7 +302,7 @@ async function generate(chatId, userText) {
 async function startBot() {
     // Sécurité Render : On attend 15s pour laisser l'ancienne instance s'éteindre
     console.log("⏳ Pause de sécurité (15s) pour éviter les conflits d'instance...");
-    await delay(15000);
+    await delay(45000);
 
     await downloadAuthFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -336,9 +337,9 @@ async function startBot() {
             
             if (statusCode === 409) {
                 console.log('⚠️ CONFLIT : Instance déjà active. Relancement dans 30s...');
-                setTimeout(startBot, 30000);
+                setTimeout(startBot, 45000);
             } else if (statusCode !== DisconnectReason.loggedOut) {
-                setTimeout(startBot, 15000);
+                setTimeout(startBot, 25000);
             }
         }
 
@@ -372,12 +373,16 @@ async function startBot() {
                 await sock.sendPresenceUpdate("composing", chatId);
 
                 const answer = await generate(chatId, text);
+                
+                await delay(1000)
 
                 for (const item of answer) {
                     if (item.type === "text") {
                         await sock.sendMessage(chatId, { text: item.text });
                         await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
                         console.log("🤖 IA >", item.text);
+                        
+                        await delay(1000)
                     }
                     if (item.type === "commande") {
                         await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + JSON.stringify(item) });

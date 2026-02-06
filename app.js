@@ -302,7 +302,7 @@ async function generate(chatId, userText) {
 async function startBot() {
     // Sécurité Render : On attend 15s pour laisser l'ancienne instance s'éteindre
     console.log("⏳ Pause de sécurité (15s) pour éviter les conflits d'instance...");
-    await delay(45000);
+    await delay(15000);
 
     await downloadAuthFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -337,7 +337,7 @@ async function startBot() {
             
             if (statusCode === 409) {
                 console.log('⚠️ CONFLIT : Instance déjà active. Relancement dans 30s...');
-                setTimeout(startBot, 45000);
+                setTimeout(startBot, 25000);
             } else if (statusCode !== DisconnectReason.loggedOut) {
                 setTimeout(startBot, 25000);
             }

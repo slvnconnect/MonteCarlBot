@@ -31,6 +31,11 @@ app.get('/qr', (req, res) => {
 
 app.listen(PORT, () => console.log(`Serveur écoute sur le port ${PORT}`));
 
+function getBeninTime() {
+    return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm").split(",")[1]
+}
+
+
 // =====================
 // CONFIGURATION & LOCK
 // =====================
@@ -43,9 +48,7 @@ const AUTH_DIR = './auth_info_baileys';
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // Fonction pour obtenir l'heure exacte du Bénin
-function getBeninTime() {
-    return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm");
-}
+
 
 const menu = `
 Poulet Mayo entier + accompagnement + livraison 6500
@@ -100,7 +103,7 @@ Notre ton est celui d'un hôte de maison de prestige : chaleureux, attentif, d'u
 - LA FORME : Nous répondons uniquement via un tableau JSON. Chaque phrase doit être fluide, sans répétition mécanique.
 
 # CONTEXTE TEMPOREL & DISPONIBILITÉ
-- MOMENT PRÉSENT : Il est ${tempsActuel} au Bénin.
+- MOMENT PRÉSENT : Il est actuellement ${tempsActuel} au Bénin.
 - SERVICE : Nos cuisines sont ouvertes de 9h à 21h chaque jour.
 - GESTION HORS-HORAIRE : Si un client nous sollicite en dehors de ce créneau, nous l'informons avec regret que nous sommes fermés, tout en l'invitant chaleureusement à nous recontacter dès le lendemain matin.
 
@@ -110,12 +113,14 @@ ${menu}
 # LOGISTIQUE & GÉOGRAPHIE
 - NOTRE REPAIRE : Nous sommes situés à Abomey-Calavi. Guidez le client avec précision : "Rue en face de la clinique Divine Miséricorde sur le nouveau goudron menant à la pharmacie SOS. Au carrefour en T, tournez à droite, avancez légèrement, nous sommes sur votre gauche."
 - LIVRAISON : Nous l'offrons avec plaisir à Cotonou et Abomey-Calavi. Pour toute autre zone, une participation de 1000f est requise. Nous mentionnons toujours cette règle avec tact.
+- Pour les produits frais la livraison n'est pas gratuite elle est de 500f pour Calavi et de 1000f pour Cotonou.
 - CONTACT DIRECT : Pour toute doléance ou demande spécifique, notre ligne directe est le 0166577174.
 
 # L'ART DE RECEVOIR (SCÉNARIOS)
 1. L'ACCUEIL : Ne jamais être robotique. Si on nous salue, nous souhaitons la bienvenue et ouvrons le dialogue : "Bienvenue chez MonteCarl Xpress 😊🍽️\\nSouhaitez-vous découvrir notre menu ou désirez-vous que nous prenions votre commande ?"
 2. LA CARTE : Nous présentons le menu de manière élégante et lisible, en un seul bloc de texte aéré. Nous ne proposons que ce que nous avons. Si un client demande l'impossible, nous déclinons avec courtoisie.
 3. LA COMMANDE : Nous n'agissons que sur intention claire. Nous recueillons alors, avec la précision d'un maître d'hôtel, les 4 piliers : Nom, Téléphone, Adresse exacte, et Détails du festin.
+4.Nous demandons l'accompagnement gratuit que le client veut sur son plat 
 
 # STRUCTURE DES ÉCHANGES (JSON)
 [
@@ -312,6 +317,7 @@ async function startBot() {
                         // Délai avant envoi pour simuler la frappe
                         await delay(Math.floor(Math.random() * 1500) + 1000);
                         await sock.sendMessage(chatId, { text: item.text });
+                        console.log("IA > ",item.text )
                         await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
                     }
                     if (item.type === "commande") {

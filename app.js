@@ -578,124 +578,118 @@ async function startBot() {
         }
     });
 
-        
-        sock.ev.on("messages.upsert", async ({ messages, type }) => {
-        if (type !== 'notify') return;
+   sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== 'notify') return;
 
-        for (const msg of messages) {
-            if (!msg?.message) continue;
+    for (const msg of messages) {
+        if (!msg?.message) continue;
 
-            const chatId = msg.key.remoteJid;
-            console.log("Message reçu de :", chatId);
+        const chatId = msg.key.remoteJid;
+        console.log("Message reçu de :", chatId);
 
-            // Ignorer les statuts
-            if (chatId === 'status@broadcast') continue;
+        // Ignorer les statuts
+        if (chatId === 'status@broadcast') continue;
 
-            // Logger les groupes
-            if (chatId.endsWith('@g.us')) {
-                console.log("📢 Groupe ID :", chatId);
-            }
-
-            // Ignorer les chaînes
-            if (chatId.endsWith('@newsletter')) continue;
-
-            // Ignorer les diffusions
-            if (chatId.endsWith('@broadcast')) continue;
-
-            // Vérifier si l'utilisateur est bloqué (après avoir chargé l'ID)
-            if (isBlocked(chatId)) {
-                console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
-                continue;
-            }
-
-            let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
-            // Vérifier si c'est un message audio
-            if (msg.message.audioMessage) {
-                text = "Voice message";
-            }
-
-            if (!text) continue;
-
-            // Commande de blocage (admin uniquement)
-            if (text.startsWith('/stop_bot')) {
-                const targetId = text.split(' ')[1];
-                if (targetId && admin.includes(chatId)) {
-                    await blockUser(targetId);
-                    await sock.sendMessage(chatId, { text: `🔒 Utilisateur ${targetId} bloqué` });
-                } else if (admin.includes(chatId)) {
-                    await blockUser(chatId);
-                    await sock.sendMessage(chatId, { text: "🔒 Vous avez été bloqué. Contactez l'admin pour être débloqué." });
-                }
-                return;
-            }
-
-            // Commande de déblocage
-            if (text.startsWith('/unlock_bot')) {
-                const targetId = text.split(' ')[1];
-                if (targetId && admin.includes(chatId)) {
-                    await unblockUser(targetId);
-                    await sock.sendMessage(chatId, { text: `🔓 Utilisateur ${targetId} débloqué` });
-                } else if (admin.includes(chatId)) {
-                    await unblockUser(chatId);
-                    await sock.sendMessage(chatId, { text: "🔓 Vous avez été débloqué" });
-                }
-                return;
-            }
-
-            if (!msg?.message || msg.key.fromMe) continue;
-
-            const hasMedia = ['imageMessage', 'videoMessage', 'audioMessage', 'stickerMessage', 'documentMessage'].some(t => msg.message[t]);
-            if (hasMedia && !msg.message.audioMessage) {
-                await sock.sendMessage(chatId, { text: "⚠️ Désolé, je ne traite que le texte." });
-                continue;
-            }
-
-            await delay(2000);
-            await sock.readMessages([msg.key]);
-
-            await sock.sendPresenceUpdate("composing", chatId);
-
-            try {
-                console.log(`📩 Message de ${msg.key.remoteJidAlt?.split('@')[0] || chatId}: ${text}`);
-                await insertRow({ chat_id: chatId, role: "user", content: text });
-
-                const answer = await generate(chatId, text);
-
-                for (const item of answer) {
-
-                    if (item.type === "text") {
-                        await delay(1000);
-                        await sock.sendMessage(chatId, { text: item.text });
-                        console.log("IA > ", item.text);
-                        await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
-                    }
-
-                    if (item.type === "commande") {
-
-                        await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + 'Heure : ' + getBeninTime() + JSON.stringify(item) });
-
-                        const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour || 'maintenant'}\nNuméro whatsapp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\nHeure : ${getBeninTime()}\n`;
-
-                        for (const num of admin) {
-                            await sock.sendPresenceUpdate("composing", num);
-                            await sock.sendMessage(num, { text: rapport });
-                            await sock.sendPresenceUpdate("paused", num);
-                        }
-                    }
-
-                }
-
-                }
-
-                await sock.sendPresenceUpdate("paused", chatId);
-
-            } catch (e) {
-                console.error("⚠️ Erreur :", e.message);
-                await sock.sendMessage(chatId, { text: "Désolé, pouvez-vous reformuler votre demande ?" });
-            }
+        // Logger les groupes
+        if (chatId.endsWith('@g.us')) {
+            console.log("📢 Groupe ID :", chatId);
         }
-    });
+
+        // Ignorer les chaînes
+        if (chatId.endsWith('@newsletter')) continue;
+
+        // Ignorer les diffusions
+        if (chatId.endsWith('@broadcast')) continue;
+
+        // Vérifier si l'utilisateur est bloqué (après avoir chargé l'ID)
+        if (isBlocked(chatId)) {
+            console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
+            continue;
+        }
+
+        let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+        // Vérifier si c'est un message audio
+        if (msg.message.audioMessage) {
+            text = "Voice message";
+        }
+
+        if (!text) continue;
+
+        // Commande de blocage (admin uniquement)
+        if (text.startsWith('/stop_bot')) {
+            const targetId = text.split(' ')[1];
+            if (targetId && admin.includes(chatId)) {
+                await blockUser(targetId);
+                await sock.sendMessage(chatId, { text: `🔒 Utilisateur ${targetId} bloqué` });
+            } else if (admin.includes(chatId)) {
+                await blockUser(chatId);
+                await sock.sendMessage(chatId, { text: "🔒 Vous avez été bloqué. Contactez l'admin pour être débloqué." });
+            }
+            return;
+        }
+
+        // Commande de déblocage
+        if (text.startsWith('/unlock_bot')) {
+            const targetId = text.split(' ')[1];
+            if (targetId && admin.includes(chatId)) {
+                await unblockUser(targetId);
+                await sock.sendMessage(chatId, { text: `🔓 Utilisateur ${targetId} débloqué` });
+            } else if (admin.includes(chatId)) {
+                await unblockUser(chatId);
+                await sock.sendMessage(chatId, { text: "🔓 Vous avez été débloqué" });
+            }
+            return;
+        }
+
+        if (!msg?.message || msg.key.fromMe) continue;
+
+        const hasMedia = ['imageMessage', 'videoMessage', 'audioMessage', 'stickerMessage', 'documentMessage'].some(t => msg.message[t]);
+        if (hasMedia && !msg.message.audioMessage) {
+            await sock.sendMessage(chatId, { text: "⚠️ Désolé, je ne traite que le texte." });
+            continue;
+        }
+
+        await delay(2000);
+        await sock.readMessages([msg.key]);
+
+        await sock.sendPresenceUpdate("composing", chatId);
+
+        try {
+            console.log(`📩 Message de ${msg.key.remoteJidAlt?.split('@')[0] || chatId}: ${text}`);
+            await insertRow({ chat_id: chatId, role: "user", content: text });
+
+            const answer = await generate(chatId, text);
+
+            for (const item of answer) {
+                if (item.type === "text") {
+                    await delay(1000);
+                    await sock.sendMessage(chatId, { text: item.text });
+                    console.log("IA > ", item.text);
+                    await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
+                }
+
+                if (item.type === "commande") {
+                    await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + 'Heure : ' + getBeninTime() + JSON.stringify(item) });
+
+                    const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour || 'maintenant'}\nNuméro whatsapp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\nHeure : ${getBeninTime()}\n`;
+
+                    for (const num of admin) {
+                        await sock.sendPresenceUpdate("composing", num);
+                        await sock.sendMessage(num, { text: rapport });
+                        await sock.sendPresenceUpdate("paused", num);
+                    }
+                }
+            }
+
+            await sock.sendPresenceUpdate("paused", chatId);
+
+        } catch (e) {
+            console.error("⚠️ Erreur :", e.message);
+            await sock.sendMessage(chatId, { text: "Désolé, pouvez-vous reformuler votre demande ?" });
+        }
+    }
+});     
 
         setInterval(async () => {
         if (sock?.user) {

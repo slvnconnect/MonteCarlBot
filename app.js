@@ -47,7 +47,7 @@ const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw'});
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
 
 const admin = [
-    "22994847187@s.whatsapp.net"
+    "2290146464690@s.whatsapp.net"
     ];
 
 const MAX_HISTORY = 200;
@@ -67,6 +67,15 @@ const menu = `
 - Attièkè+Gésier : 2000 ou 2500 FCFA
 
 Possibilité d'ajouter une portion d'attièkè (500 FCFA) ou d'alloco (500 FCFA)
+
+Riz - Pate Rouge - Piron - Akassa comme accompagnement au choix de : 
+
+- Poisson : 2500 , 4000 
+- Aileron : 3500
+- Lapin Complet : 7000 , 8000 , 9000 , 10000
+- Demi Lapin : 4500 , 5000
+- Poulet moitié : 3500
+- Poulet complet : 6000 
 
 `;
 
@@ -406,24 +415,29 @@ Aucun ajout ou invention
 ---
 
 #BOISSONS
-Tu ne dévoile la liste que si le client te le demande explicitement
+
+Ira 500
+Rox 1000
+Vody 1000 
+Desperado 700 
+Heineken 1000 ou 1500
+Jus Xtra 1000 ou 1500 
+LÉGEND 700 
+Yaourt Hollandia 1000 ou 2000
+Deguè 1000
+Yaourt Dèkoungbé 1000
+
+Tu suggéres les boissons mais sans insister 
+
 Si il veut commander une boisson , voici un ex de message que tu lui envoie : *Si vous commandez et que vous vouliez de la boisson lorsque le livreur qui va prendre votre plat vous contactera , il verifiera si il y en a et vous le prendra *
 
 PLATS & SUPPLÉMENTS
 
 Plats = uniquement menu
 
-Suppléments :
-
-attièkè (500 FCFA)
-
-alloco (500 FCFA)
-
-
-
 Règles :
 
-Jamais proposer un supplément comme plat principal
+Jamais proposer un supplément comme plat principal mais toujours les deux
 
 Aucun ajout inventé
 
@@ -665,6 +679,7 @@ async function generate(chatId, userText) {
 
 
 async function startBot() {
+    
     await downloadAuthFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
@@ -693,9 +708,12 @@ async function startBot() {
 
         if (connection === 'close') {
             
-            if(sock){
-                sock = null
-        }
+        const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
+        if (isConflict) {
+        console.log('⚡ Conflit, redémarrage...');
+        process.exit(0);
+    }
+}
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             if (statusCode !== DisconnectReason.loggedOut) {
                 console.log('🔄 Reconnexion dans 3s...');

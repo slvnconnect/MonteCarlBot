@@ -13,6 +13,9 @@ const PORT = process.env.PORT || 10000;
 let qrCodeData = null;
 let sock = null;
 
+// Cache des utilisateurs bloqués (pour éviter d'appeler Supabase à chaque message)
+let blockedUsersCache = new Set();
+
 app.get('/', (req, res) => res.send('Bot Dèkoungbé en ligne ✅'));
 
 app.get('/qr', (req, res) => {
@@ -32,21 +35,11 @@ function getBeninTime() {
     return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm");
 }
 
-const chatBlock = [];
-
-function block(id) {
-    chatBlock.push(id);
-}
-
-function isBlock(id) {
-    return chatBlock.includes(id);
-}
-
 const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
 
-const admin = ["120363407014174901@g.us"];
+const admin = ["120363407014174901@g.us"]; // Groupe admin
 
 const MAX_HISTORY = 200;
 
@@ -375,6 +368,78 @@ Localisation : Godomey, Dèkoungbé, Fin clôture de l'usine d'engrais de Dèkou
 `;
 };
 
+// ==================== GESTION DES BLOCAGES AVEC SUPABASE ====================
+
+async function loadBlockedUsers() {
+    try {
+        const { data, error } = await supabase
+            .from('blocked_users')
+            .select('user_id')
+            .eq('blocked', true);
+        
+        if (error) throw error;
+        
+        blockedUsersCache.clear();
+        data.forEach(row => blockedUsersCache.add(row.user_id));
+        console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
+    } catch (e) {
+        console.error("Erreur chargement blocages:", e.message);
+    }
+}
+
+async function blockUser(userId) {
+    try {
+        // Vérifier si déjà bloqué
+        const { data: existing } = await supabase
+            .from('blocked_users')
+            .select('user_id')
+            .eq('user_id', userId)
+            .single();
+        
+        if (existing) {
+            // Mettre à jour
+            await supabase
+                .from('blocked_users')
+                .update({ blocked: true, blocked_at: new Date().toISOString() })
+                .eq('user_id', userId);
+        } else {
+            // Insérer
+            await supabase
+                .from('blocked_users')
+                .insert({ user_id: userId, blocked: true, blocked_at: new Date().toISOString() });
+        }
+        
+        blockedUsersCache.add(userId);
+        console.log(`🔒 Utilisateur bloqué: ${userId}`);
+        return true;
+    } catch (e) {
+        console.error("Erreur blocage:", e.message);
+        return false;
+    }
+}
+
+async function unblockUser(userId) {
+    try {
+        await supabase
+            .from('blocked_users')
+            .update({ blocked: false, unblocked_at: new Date().toISOString() })
+            .eq('user_id', userId);
+        
+        blockedUsersCache.delete(userId);
+        console.log(`🔓 Utilisateur débloqué: ${userId}`);
+        return true;
+    } catch (e) {
+        console.error("Erreur déblocage:", e.message);
+        return false;
+    }
+}
+
+function isBlocked(userId) {
+    return blockedUsersCache.has(userId);
+}
+
+// ==================== FIN GESTION BLOCAGES ====================
+
 async function downloadAuthFromSupabase() {
     try {
         const { data, error } = await supabase.from('whatsapp_auth').select('data').eq('id', 'bot1').single();
@@ -462,6 +527,10 @@ async function generate(chatId, userText) {
 }
 
 async function startBot() {
+
+    // Charger les utilisateurs bloqués au démarrage
+    await loadBlockedUsers();
+
     await downloadAuthFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
@@ -509,7 +578,8 @@ async function startBot() {
         }
     });
 
-    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        
+        sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
@@ -518,27 +588,58 @@ async function startBot() {
             const chatId = msg.key.remoteJid;
             console.log("Message reçu de :", chatId);
 
+            // Ignorer les statuts
             if (chatId === 'status@broadcast') continue;
 
+            // Logger les groupes
             if (chatId.endsWith('@g.us')) {
                 console.log("📢 Groupe ID :", chatId);
             }
 
+            // Ignorer les chaînes
             if (chatId.endsWith('@newsletter')) continue;
+
+            // Ignorer les diffusions
             if (chatId.endsWith('@broadcast')) continue;
 
-            if (isBlock(chatId)) return;
+            // Vérifier si l'utilisateur est bloqué (après avoir chargé l'ID)
+            if (isBlocked(chatId)) {
+                console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
+                continue;
+            }
 
             let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
 
+            // Vérifier si c'est un message audio
             if (msg.message.audioMessage) {
                 text = "Voice message";
             }
 
             if (!text) continue;
 
-            if (text === '/stop_bot') {
-                block(chatId);
+            // Commande de blocage (admin uniquement)
+            if (text.startsWith('/stop_bot')) {
+                const targetId = text.split(' ')[1];
+                if (targetId && admin.includes(chatId)) {
+                    await blockUser(targetId);
+                    await sock.sendMessage(chatId, { text: `🔒 Utilisateur ${targetId} bloqué` });
+                } else if (admin.includes(chatId)) {
+                    await blockUser(chatId);
+                    await sock.sendMessage(chatId, { text: "🔒 Vous avez été bloqué. Contactez l'admin pour être débloqué." });
+                }
+                return;
+            }
+
+            // Commande de déblocage
+            if (text.startsWith('/unlock_bot')) {
+                const targetId = text.split(' ')[1];
+                if (targetId && admin.includes(chatId)) {
+                    await unblockUser(targetId);
+                    await sock.sendMessage(chatId, { text: `🔓 Utilisateur ${targetId} débloqué` });
+                } else if (admin.includes(chatId)) {
+                    await unblockUser(chatId);
+                    await sock.sendMessage(chatId, { text: "🔓 Vous avez été débloqué" });
+                }
                 return;
             }
 
@@ -552,6 +653,7 @@ async function startBot() {
 
             await delay(2000);
             await sock.readMessages([msg.key]);
+
             await sock.sendPresenceUpdate("composing", chatId);
 
             try {
@@ -561,6 +663,7 @@ async function startBot() {
                 const answer = await generate(chatId, text);
 
                 for (const item of answer) {
+
                     if (item.type === "text") {
                         await delay(1000);
                         await sock.sendMessage(chatId, { text: item.text });
@@ -569,9 +672,10 @@ async function startBot() {
                     }
 
                     if (item.type === "commande") {
+
                         await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + 'Heure : ' + getBeninTime() + JSON.stringify(item) });
 
-                        const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour || 'maintenant'}\n📱 WhatsApp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\n⏰ Heure commande : ${getBeninTime()}`;
+                        const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour || 'maintenant'}\nNuméro whatsapp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\nHeure : ${getBeninTime()}\n`;
 
                         for (const num of admin) {
                             await sock.sendPresenceUpdate("composing", num);
@@ -579,6 +683,9 @@ async function startBot() {
                             await sock.sendPresenceUpdate("paused", num);
                         }
                     }
+
+                }
+
                 }
 
                 await sock.sendPresenceUpdate("paused", chatId);
@@ -590,7 +697,7 @@ async function startBot() {
         }
     });
 
-    setInterval(async () => {
+        setInterval(async () => {
         if (sock?.user) {
             try { await sock.sendPresenceUpdate('available'); } catch { }
         }
@@ -598,3 +705,4 @@ async function startBot() {
 }
 
 startBot();
+

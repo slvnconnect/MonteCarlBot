@@ -463,7 +463,6 @@ async function generate(chatId, userText) {
 
 async function startBot() {
     await downloadAuthFromSupabase();
-    await loadBlockedUsers();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
 

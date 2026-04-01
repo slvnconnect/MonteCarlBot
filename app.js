@@ -32,23 +32,21 @@ function getBeninTime() {
     return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm");
 }
 
-const chatBlock = []
+const chatBlock = [];
 
-function block(id){
-    chatBlock.push(id)
+function block(id) {
+    chatBlock.push(id);
 }
 
-function isBlock(id){
-    return chatBlock.includes(id)
+function isBlock(id) {
+    return chatBlock.includes(id);
 }
 
-const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw'});
+const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
 
-const admin = [
-    "2290146464690@s.whatsapp.net"
-    ];
+const admin = ["120363407014174901@g.us"]; // Groupe admin
 
 const MAX_HISTORY = 200;
 
@@ -76,12 +74,11 @@ Riz - Pate Rouge - Piron - Akassa comme accompagnement au choix de :
 - Demi Lapin : 4500 , 5000
 - Poulet moitié : 3500
 - Poulet complet : 6000 
-
 `;
 
 const getPrompt = () => {
-
-return ` 
+    const tempsActuel = getBeninTime();
+    return ` 
 RÉFLEXIONS OBLIGATOIRES AVANT CHAQUE RÉPONSE
 
 Avant d'écrire ta réponse, tu passes mentalement ces 12 vérifications :
@@ -264,11 +261,14 @@ première présentation
 
 demande explicite
 
+Nous n´avons pas d´hors zone 
 
 Tu réponds toujours en 1 seul objet JSON, sauf :
 → finalisation de commande (2 objets autorisés)
 
 Tu ne juges jamais la commande du client.
+
+Tu ne dis jamais que le livreur est en route mais toujours au client de patienter qu´il l´informera .
 
 Tu ne récites jamais la core identity.
 
@@ -318,7 +318,7 @@ deux fois
 Tu ne prends jamais de commande le mardi, même en avance.
 
 Aucune limite de quantité.
-
+Aucune limite de zone . on livre partout 
 
 
 ---
@@ -358,6 +358,9 @@ Tu es accueillant, simple et humain.
 "Je dois collecter"
 
 
+"Le livreur est en route"
+
+
 ✅ À DIRE :
 
 "Pouvez-vous me donner votre numéro ? 😊"
@@ -368,6 +371,8 @@ Tu es accueillant, simple et humain.
 
 "Désolé, on sert le plat comme il est sur le menu"
 
+""
+
 
 
 ---
@@ -376,7 +381,7 @@ HORAIRES
 
 Ouvert : 09h00 → 02h00
 
-Heure actuelle : ${getBeninTime()}
+Heure actuelle : ${tempsActuel}
 
 
 Règles :
@@ -446,7 +451,7 @@ Aucun ajout inventé
 
 ---
 
-PRIX
+#PRIX
 
 Strictement ceux du menu
 
@@ -456,9 +461,10 @@ Aucune modification
 
 ---
 
-LIVRAISON
+#LIVRAISON
 
 Payante
+On livre n´importe ou . Tu ne dis jamais qu´on ne livre pas quelque part
 
 
 Message standard :
@@ -486,11 +492,11 @@ Normal
 Commande (UNIQUEMENT SI INFOS VALIDES)
 
 [
-{ "type": "commande", "phone": "...", "address": "...", "menu": "..." },
-{ "type": "text", "text": "..." }
+{ "type": "commande", "phone": "...", "address": "...", "menu": "..."},
+{ "type": "text", "text": "Commande enregistrée . Patientez quelques instants , le livreur vous contactera" }
 ]
 
-
+N´invente jamais de structure dans le json
 ---
 
 FLOW CONVERSATION
@@ -531,10 +537,6 @@ Réduction
 
 Tutoiement client
 → rester en vouvoiement
-
-Hors zone
-→ "Désolé, nous ne livrons pas à [ville]"
-
 
 
 ---
@@ -591,7 +593,7 @@ humain
 .Localisation : Godomey , Dèkoungbé , Fin clôture de l'usine d'engrais de Dèkoungbé , non loin de la pharmacie
 
 `;
-}
+};
 
 async function downloadAuthFromSupabase() {
     try {
@@ -613,7 +615,7 @@ async function uploadAuthToSupabase() {
         for (const file of files) {
             const fullPath = path.join(AUTH_DIR, file);
             if (fs.lstatSync(fullPath).isFile()) {
-                try { bundle[file] = JSON.parse(fs.readFileSync(fullPath, 'utf-8')); } catch {}
+                try { bundle[file] = JSON.parse(fs.readFileSync(fullPath, 'utf-8')); } catch { }
             }
         }
         await supabase.from('whatsapp_auth').upsert({
@@ -652,8 +654,8 @@ async function generate(chatId, userText) {
             model: "mistral-large-latest",
             messages,
             responseFormat: { type: "json_object" },
-            temperature : 0.0 , 
-            top_p: 0.1 , 
+            temperature: 0.0,
+            top_p: 0.9,
             presence_penalty: 0.6
         });
     } catch {
@@ -662,8 +664,8 @@ async function generate(chatId, userText) {
             model: "mistral-large-latest",
             messages,
             responseFormat: { type: "json_object" },
-            temperature : 0.0 , 
-            top_p: 0.1 , 
+            temperature: 0.0,
+            top_p: 0.9,
             presence_penalty: 0.6
         });
     }
@@ -679,9 +681,8 @@ async function generate(chatId, userText) {
     }
 }
 
-
 async function startBot() {
-    
+
     await downloadAuthFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
@@ -709,63 +710,67 @@ async function startBot() {
         }
 
         if (connection === 'close') {
-    const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
-    
-    if (isConflict) {
-        console.log('⚡ Conflit, redémarrage...');
-        process.exit(0);
-    }
-    
-    const statusCode = lastDisconnect?.error?.output?.statusCode;
-    if (statusCode !== DisconnectReason.loggedOut) {
-        console.log('🔄 Reconnexion dans 3s...');
-        setTimeout(startBot, 3000);
-    }
-}
+            const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
+
+            if (isConflict) {
+                console.log('⚡ Conflit, redémarrage...');
+                process.exit(0);
+            }
+
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            if (statusCode !== DisconnectReason.loggedOut) {
+                console.log('🔄 Reconnexion dans 3s...');
+                setTimeout(startBot, 3000);
+            }
+        }
+
         if (connection === 'open') {
             qrCodeData = null;
             console.log('✅ Bot Dèkoungbé opérationnel');
         }
     });
 
-sock.ev.on("messages.upsert", async ({ messages, type}) => {
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
-            if(!msg?.message) continue 
-            
+            if (!msg?.message) continue;
+
             const chatId = msg.key.remoteJid;
-            
+            console.log("Message reçu de :", chatId);
+
             // Ignorer les statuts
             if (chatId === 'status@broadcast') continue;
-            
-            // Ignorer les groupes (les IDs de groupe se terminent par @g.us)
-            if (chatId.endsWith('@g.us')) continue;
-            
-            // Ignorer les chaînes (les IDs de chaîne se terminent par @newsletter)
+
+            // Logger les groupes
+            if (chatId.endsWith('@g.us')) {
+                console.log("📢 Groupe ID :", chatId);
+            }
+
+            // Ignorer les chaînes
             if (chatId.endsWith('@newsletter')) continue;
-            
-            // Ignorer les diffusions/broadcast lists
+
+            // Ignorer les diffusions
             if (chatId.endsWith('@broadcast')) continue;
-            
-            if(isBlock(chatId)) return 
-            
+
+            if (isBlock(chatId)) return;
+
             let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-            
+
             // Vérifier si c'est un message audio
             if (msg.message.audioMessage) {
                 text = "Voice message";
             }
-            
+
             if (!text) continue;
-            
-            if(text === '/stop_bot'){
-                block(chatId)
-                return
+
+            if (text === '/stop_bot') {
+                block(chatId);
+                return;
             }
-            
-            if (!msg?.message || msg.key.fromMe) continue
-   
+
+            if (!msg?.message || msg.key.fromMe) continue;
+
             const hasMedia = ['imageMessage', 'videoMessage', 'audioMessage', 'stickerMessage', 'documentMessage'].some(t => msg.message[t]);
             if (hasMedia && !msg.message.audioMessage) {
                 await sock.sendMessage(chatId, { text: "⚠️ Désolé, je ne traite que le texte." });
@@ -784,35 +789,29 @@ sock.ev.on("messages.upsert", async ({ messages, type}) => {
                 const answer = await generate(chatId, text);
 
                 for (const item of answer) {
-                    
+
                     if (item.type === "text") {
                         await delay(1000);
                         await sock.sendMessage(chatId, { text: item.text });
                         console.log("IA > ", item.text);
                         await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
                     }
-                    
-                    if(item.type === "commande"){
-                        
-                       await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + 'Heurr : ' + getBeninTime() + JSON.stringify(item) });
-                        
-                        const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\nNuméro whatsapp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\nHeure : ${getBeninTime()}`;
+
+                    if (item.type === "commande") {
+
+                        await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + 'Heure : ' + getBeninTime() + JSON.stringify(item) });
+
+                        const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\nNuméro whatsapp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\nHeure : ${getBeninTime()}\n`;
 
                         for (const num of admin) {
-                            
                             await sock.sendPresenceUpdate("composing", num);
-                            
-                            await delay(2000);
-                            
                             await sock.sendMessage(num, { text: rapport });
-                            
                             await sock.sendPresenceUpdate("paused", num);
-                            
-                        } 
+                        }
                     }
-                      
-                 }
-                 
+
+                }
+
                 await sock.sendPresenceUpdate("paused", chatId);
 
             } catch (e) {

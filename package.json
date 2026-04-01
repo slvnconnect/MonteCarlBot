@@ -7,15 +7,17 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "Silvano",
+  "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@mistralai/mistralai": "^1.13.0",
-    "@supabase/supabase-js": "^2.93.3",
+    "@mistralai/mistralai": "^1.14.1",
+    "@supabase/supabase-js": "^2.98.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "chalkie": "^0.0.12",
     "express": "^5.2.1",
-    "moment-timezone": "^0.6.0",
+    "moment-timezone": "^0.6.1",
+    "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"
   }

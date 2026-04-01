@@ -79,8 +79,9 @@ Riz - Pate Rouge - Piron - Akassa comme accompagnement au choix de :
 
 `;
 
-const prompt = `
+const getPrompt = () => {
 
+return ` 
 RÉFLEXIONS OBLIGATOIRES AVANT CHAQUE RÉPONSE
 
 Avant d'écrire ta réponse, tu passes mentalement ces 12 vérifications :
@@ -589,7 +590,8 @@ humain
 
 .Localisation : Godomey , Dèkoungbé , Fin clôture de l'usine d'engrais de Dèkoungbé , non loin de la pharmacie
 
-`
+`;
+}
 
 async function downloadAuthFromSupabase() {
     try {
@@ -639,7 +641,7 @@ async function loadHistory(chatId) {
 async function generate(chatId, userText) {
     const history = await loadHistory(chatId);
     const messages = [
-        { role: "system", content: prompt },
+        { role: "system", content: getPrompt() },
         ...history,
         { role: "user", content: userText }
     ];
@@ -707,20 +709,19 @@ async function startBot() {
         }
 
         if (connection === 'close') {
-            
-        const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
-        if (isConflict) {
+    const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
+    
+    if (isConflict) {
         console.log('⚡ Conflit, redémarrage...');
         process.exit(0);
     }
+    
+    const statusCode = lastDisconnect?.error?.output?.statusCode;
+    if (statusCode !== DisconnectReason.loggedOut) {
+        console.log('🔄 Reconnexion dans 3s...');
+        setTimeout(startBot, 3000);
+    }
 }
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            if (statusCode !== DisconnectReason.loggedOut) {
-                console.log('🔄 Reconnexion dans 3s...');
-                setTimeout(startBot, 3000);
-            }
-        }
-
         if (connection === 'open') {
             qrCodeData = null;
             console.log('✅ Bot Dèkoungbé opérationnel');

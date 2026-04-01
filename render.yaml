@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: bot-dekoungbe
+    runtime: node
+    buildCommand: npm install
+    startCommand: node app.js
+    numInstances: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0

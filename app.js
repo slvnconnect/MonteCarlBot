@@ -539,7 +539,7 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        syncFullHistory: false,
+        syncFullHistory: true,
         markOnlineOnConnect: false,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         connectTimeoutMs: 60000,
@@ -650,7 +650,6 @@ async function startBot() {
             continue;
         }
 
-        await delay(2000);
         await sock.readMessages([msg.key]);
 
         await sock.sendPresenceUpdate("composing", chatId);

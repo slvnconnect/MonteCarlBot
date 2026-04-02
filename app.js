@@ -53,6 +53,23 @@ let lastFetch = 0;
 
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
+async function getBotConfig() {
+    try {
+        const { data, error } = await supabase
+            .from('bot_config')
+            .select('prompt, menu')
+            .eq('id', 'bot1')
+            .single();
+
+        if (error) throw error;
+
+        return data || {};
+    } catch (e) {
+        console.error("Erreur getBotConfig:", e.message);
+        return {};
+    }
+}
+
 const getCachedConfig = async () => {
     const now = Date.now();
 
@@ -153,7 +170,7 @@ async function loadHistory(chatId) {
 // ==================== GENERATION IA ====================
 async function generate(chatId, userText) {
     const history = await loadHistory(chatId);
-    const messages = [{ role: "system", content: getPrompt() }, ...history, { role: "user", content: userText }];
+    const messages = [{ role: "system", content: await getPrompt() }, ...history, { role: "user", content: userText }];
 
     let res;
     try {
@@ -251,11 +268,11 @@ async function processIncomingMessage(msg) {
 
     // Commandes Admin
     if (text.startsWith('/stop_bot')) {
-            await blockUser(targetId);
+            await blockUser(chatId);
         return;
     }
     if (text.startsWith('/unlock_bot')) {
-            await unblockUser(targetId);
+            await unblockUser(chatId);
         return;
     }
 

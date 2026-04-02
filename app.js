@@ -18,7 +18,6 @@ let blockedUsersCache = new Set();
 
 // --- CONFIGURATION CHEMINS ---
 const AUTH_DIR = './auth';
-const lockPath = path.join(AUTH_DIR, 'bot.lock');
 
 app.get('/', (req, res) => res.send('Bot Dèkoungbé en ligne ✅'));
 
@@ -43,7 +42,7 @@ const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
 
-const admin = ["22994847187@s.whatsapp.net"]; // Groupe admin
+const admin = ["22994847187@s.whatsapp.net"];
 
 const MAX_HISTORY = 200;
 
@@ -186,6 +185,8 @@ Nous utilisons toujours "nous" pour le restaurant et "vous" pour le client.
 - Toujours obtenir confirmation avant de lancer.  
 - Si texte = "Voice message" → "Désolé, je ne peux pas écouter. Écrivez votre commande en texte."
 - La pate est uniquement rouge 
+- Si le client ne mentionne pas de ville, ne suppose aucune localisation.
+
 ---
 
 # COMMANDES (RÈGLES CRITIQUES)
@@ -376,14 +377,16 @@ async function loadBlockedUsers() {
         const { data, error } = await supabase.from('blocked_users').select('user_id').eq('blocked', true);
         if (error) throw error;
         blockedUsersCache.clear();
-        data.forEach(row => blockedUsersCache.add(row.user_id));
+        if (data) {
+            data.forEach(row => blockedUsersCache.add(row.user_id));
+        }
         console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
     } catch (e) { console.error("Erreur chargement blocages:", e.message); }
 }
 
 async function blockUser(userId) {
     try {
-        const { data: existing } = await supabase.from('blocked_users').select('user_id').eq('user_id', userId).single();
+        const { data: existing } = await supabase.from('blocked_users').select('user_id').eq('user_id', userId).maybeSingle();
         if (existing) {
             await supabase.from('blocked_users').update({ blocked: true, blocked_at: new Date().toISOString() }).eq('user_id', userId);
         } else {
@@ -462,7 +465,13 @@ async function generate(chatId, userText) {
 
 // ==================== CORE BOT ====================
 async function startBot() {
-    // ANTI-CONFLIT RENDER
+    // Création du dossier auth s'il n'existe pas
+    if (!fs.existsSync(AUTH_DIR)) {
+        fs.mkdirSync(AUTH_DIR, { recursive: true });
+    }
+
+    // Anti-conflit Render
+    const lockPath = path.join(AUTH_DIR, 'bot.lock');
     if (fs.existsSync(lockPath)) {
         const lockTime = fs.readFileSync(lockPath, 'utf8');
         if (Date.now() - parseInt(lockTime) < 60000) {
@@ -482,12 +491,10 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        syncFullHistory: false, // OFF pour éviter le crash RAM sur Render
+        syncFullHistory: false,
         markOnlineOnConnect: true,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
-        connectTimeoutMs: 60000,
-        // Correction erreur de déchiffrement
-        getMessage: async (key) => { return { conversation: 'Message déchiffré...' } }
+        connectTimeoutMs: 60000
     });
 
     sock.ev.on('creds.update', async () => {
@@ -510,7 +517,7 @@ async function startBot() {
         if (connection === 'open') {
             qrCodeData = null;
             console.log('✅ Bot Dèkoungbé opérationnel');
-            // Update lock
+            // Update lock toutes les 30 secondes
             setInterval(() => { if(fs.existsSync(lockPath)) fs.writeFileSync(lockPath, Date.now().toString()); }, 30000);
         }
     });
@@ -518,13 +525,12 @@ async function startBot() {
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type !== 'notify') return;
         for (const msg of messages) {
-            // Traitement asynchrone pour ne rater aucun message
             processIncomingMessage(msg).catch(e => console.error(e));
         }
     });
 }
 
-// LOGIQUE DE TRAITEMENT (Ta boucle originale)
+// LOGIQUE DE TRAITEMENT DES MESSAGES
 async function processIncomingMessage(msg) {
     if (!msg?.message) return;
     const chatId = msg.key.remoteJid;
@@ -580,6 +586,7 @@ async function processIncomingMessage(msg) {
             }
         }
     } catch (e) {
+        console.error("⚠️ Erreur:", e.message);
         await sock.sendMessage(chatId, { text: "Désolé, pouvez-vous reformuler votre demande ?" });
     } finally {
         await sock.sendPresenceUpdate("paused", chatId);

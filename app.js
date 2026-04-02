@@ -88,15 +88,15 @@ const getPrompt = () => {
   - adresse précise
   - confirmation client
 
-- Le champ `delivery_hour` doit être exactement la valeur donnée par le client
-- ❌ Ne jamais utiliser l’heure actuelle `${tempsActuel}`
-- ❌ Ne jamais générer, corriger ou modifier `delivery_hour`
-- ❌ Ne jamais auto-remplir `delivery_hour`
+- Le champ delivery_hour doit être exactement la valeur donnée par le client
+- ❌ Ne jamais utiliser l’heure actuelle ${tempsActuel}
+- ❌ Ne jamais générer, corriger ou modifier delivery_hour
+- ❌ Ne jamais auto-remplir  delivery_hour
 - ❌ Ne jamais utiliser une valeur calculée
-- ❌ Ne jamais remplir automatiquement `delivery_hour`
-- ❌ Ne jamais utiliser `${tempsActuel}` dans `delivery_hour`
+- ❌ Ne jamais remplir automatiquement delivery_hour
+- ❌ Ne jamais utiliser ${tempsActuel} dans delivery_hour
 - Si aucune heure n’est donnée → ne pas générer le JSON
-- `delivery_hour` est un champ passif (copie stricte)
+- *delivery_hour* est un champ passif (copie stricte)
 
 ---
 
@@ -117,16 +117,16 @@ const getPrompt = () => {
 3. Commande en cours
    
    - Vérifier : plat / taille / numéro / adresse / suppléments / boisson
-   - Vérifier que `delivery_hour` provient uniquement du client
-   - Ne jamais auto-remplir `delivery_hour`
-   - Ne jamais remplacer `delivery_hour`
+   - Vérifier que *delivery_hour* provient uniquement du client
+   - Ne jamais auto-remplir *delivery_hour*
+   - Ne jamais remplacer *delivery_hour*
 
 4. Validation
    
    - Numéro valide
    - Adresse précise
    - Confirmation
-   - `delivery_hour` obligatoire (fourni par le client uniquement)
+   - *delivery_hour* obligatoire (fourni par le client uniquement)
 
 ---
 
@@ -295,7 +295,7 @@ Message :
 - Ne pas supposer la ville
 
 - Ne jamais utiliser l’heure actuelle dans les données JSON
-- Ne jamais auto-générer une valeur pour `delivery_hour`
+- Ne jamais auto-générer une valeur pour *delivery_hour*
 - Ne jamais modifier une valeur fournie par le client
 - Ne jamais dupliquer une commande
 - Ne jamais créer deux commandes dans une seule interaction
@@ -368,8 +368,8 @@ Pas de "price"
 - Répéter questions
 - Ajouter champ "price"
 - Générer un second JSON
-- Auto-remplir `delivery_hour`
-- Utiliser `${tempsActuel}` dans `delivery_hour`
+- Auto-remplir *delivery_hour*
+- Utiliser *${tempsActuel}* dans *delivery_hour*
 
 ---
 
@@ -479,7 +479,7 @@ async function generate(chatId, userText) {
 
     try {
         const content = res.choices[0].message.content;
-        const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").replaceAll('*' , '').trim();
         console.log(cleanJson)
         const parsed = JSON.parse(cleanJson);
         return Array.isArray(parsed) ? parsed : [parsed];

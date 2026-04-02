@@ -19,7 +19,7 @@ let cachedConfig = null;
 let lastFetch = 0;
 
 const CACHE_DURATION = 2 * 60 * 1000;
-const MAX_HISTORY = 50; 
+const MAX_HISTORY = 200; 
 
 // ==================== INITIALISATION SERVEUR ====================
 app.get('/', (req, res) => res.send('Bot Dèkoungbé Immortel ✅ en ligne'));
@@ -51,7 +51,43 @@ async function insertRow(row) {
     await supabase.from('conversations').insert(row); 
 }
 
-// ==================== GESTION CONFIG & BLOCAGES ====================
+// ==================== GESTION DES BLOCAGES ====================
+async function loadBlockedUsers() {
+    try {
+        const { data, error } = await supabase.from('blocked_users').select('user_id').eq('blocked', true);
+        if (error) throw error;
+        blockedUsersCache.clear();
+        if (data) {
+            data.forEach(row => blockedUsersCache.add(row.user_id));
+        }
+        console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
+    } catch (e) { console.error("Erreur chargement blocages:", e.message); }
+}
+
+async function blockUser(userId) {
+    try {
+        const { data: existing } = await supabase.from('blocked_users').select('user_id').eq('user_id', userId).maybeSingle();
+        if (existing) {
+            await supabase.from('blocked_users').update({ blocked: true, blocked_at: new Date().toISOString() }).eq('user_id', userId);
+        } else {
+            await supabase.from('blocked_users').insert({ user_id: userId, blocked: true, blocked_at: new Date().toISOString() });
+        }
+        blockedUsersCache.add(userId);
+        return true;
+    } catch (e) { return false; }
+}
+
+async function unblockUser(userId) {
+    try {
+        await supabase.from('blocked_users').update({ blocked: false, unblocked_at: new Date().toISOString() }).eq('user_id', userId);
+        blockedUsersCache.delete(userId);
+        return true;
+    } catch (e) { return false; }
+}
+
+function isBlocked(userId) { return blockedUsersCache.has(userId); }
+
+// ==================== GESTION CONFIG ====================
 async function getBotConfig() {
     const now = Date.now();
     if (cachedConfig && (now - lastFetch < CACHE_DURATION)) return cachedConfig;
@@ -70,15 +106,6 @@ const getPrompt = async () => {
         .replaceAll('${menu}', config?.menu || "")
         .replaceAll('${tempsActuel}', getBeninTime());
 };
-
-async function loadBlockedUsers() {
-    try {
-        const { data } = await supabase.from('blocked_users').select('user_id').eq('blocked', true);
-        blockedUsersCache.clear();
-        if (data) data.forEach(row => blockedUsersCache.add(row.user_id));
-        console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
-    } catch (e) { console.error("Erreur chargement blocages:", e.message); }
-}
 
 // ==================== SYNCHRO AUTH SUPABASE ====================
 async function downloadAuth() {
@@ -175,10 +202,23 @@ async function startBot() {
 async function processIncomingMessage(msg) {
     if (!msg?.message || msg.key.fromMe) return;
     const chatId = msg.key.remoteJid;
-    if (chatId.includes('@broadcast') || blockedUsersCache.has(chatId)) return;
+    if (chatId.includes('@broadcast') || isBlocked(chatId)) return;
 
+    // Détection Audio & Texte
     let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if (msg.message.audioMessage) text = "Voice message";
+    
     if (!text) return;
+
+    // Commandes Admin de blocage
+    if (text.startsWith('/stop_bot'){
+        await blockUser(chatId);
+        return;
+    }
+    if (text.startsWith('/unlock_bot') {
+        await unblockUser(chatId);
+        return;
+    }
 
     await sock.readMessages([msg.key]);
     await sock.sendPresenceUpdate("composing", chatId);
@@ -187,13 +227,21 @@ async function processIncomingMessage(msg) {
         const history = await loadHistory(chatId);
         const prompt = await getPrompt();
         
-        const res = await ia.chat.complete({
-            model: "mistral-large-latest",
+        // Paramètres IA Naturels
+        const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
-            temperature: 0.1
-        });
+            temperature: 0.1,
+        };
 
+        let res;
+        try {
+            res = await ia.chat.complete({ model: "mistral-large-latest", ...aiOptions });
+        } catch (err) {
+            console.error("Repli sur mistral-small...", err.message);
+            res = await ia.chat.complete({ model: "mistral-small-latest", ...aiOptions });
+        }
+        
         const content = res.choices[0].message.content;
         const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
         const answer = JSON.parse(cleanJson);
@@ -207,24 +255,28 @@ async function processIncomingMessage(msg) {
                 await sock.sendMessage(chatId, { text: item.text });
                 await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
             } 
-            else if (item.type === "commande") {
-                const logCommande = `[COMMANDE]: ${JSON.stringify(item)} | ${getBeninTime()}`;
-                await insertRow({ chat_id: chatId, role: "assistant", content: logCommande });
+            else if (item.type === "commande" || item.type === "modif") {
+                const isModif = item.type === "modif";
+                const label = isModif ? "MODIFICATION" : "COMMANDE";
                 
-                const rapport = `\n👨‍🍳 *NOUVELLE COMMANDE*\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour}\n`;
+                await insertRow({ chat_id: chatId, role: "assistant", content: `[${label}]: ${JSON.stringify(item)} | ${getBeninTime()}` });
+                
+                let rapport = `\n👨‍🍳 *${isModif ? "MODIFICATION DE COMMANDE" : "NOUVELLE COMMANDE"}*\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n`;
+                
+                if (isModif) {
+                    rapport += `❌ Ancien : ${item.old_menu}\n✅ Nouveau : ${item.new_menu}\n`;
+                } else {
+                    rapport += `🍽️ ${item.menu}\n`;
+                }
+                
+                rapport += `🕒 Livraison voulue : ${item.delivery_hour}\nHeure de lancement: ${getBeninTime()}\nNuméro WhatsApp : ${msg.key.remoteJidAlt.split('@')[0]}`;
+                
                 for (const num of admin) { await sock.sendMessage(num, { text: rapport }); }
-            } 
-            else if (item.type === "modif") {
-                const logModif = `[MODIFICATION]: ${JSON.stringify(item)} | ${getBeninTime()}`;
-                await insertRow({ chat_id: chatId, role: "assistant", content: logModif });
-                
-                const rapportModif = `\n🔄 *MODIFICATION DE COMMANDE*\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n❌ Ancien : ${item.old_menu}\n✅ Nouveau : ${item.new_menu}\n🕒 Livraison : ${item.delivery_hour}\n`;
-                for (const num of admin) { await sock.sendMessage(num, { text: rapportModif }); }
             }
         }
     } catch (e) {
         console.error("⚠️ Erreur:", e.message);
-        await sock.sendMessage(chatId, { text: "Désolé, reformulez votre demande svp." });
+        await sock.sendMessage(chatId, { text: "Désolé, reformulez votre demande svp. 😊" });
     } finally {
         await sock.sendPresenceUpdate("paused", chatId);
     }

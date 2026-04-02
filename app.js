@@ -449,15 +449,16 @@ async function generate(chatId, userText) {
 
     let res;
     try {
-        res = await ia.chat.complete({ model: "mistral-small-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
+        res = await ia.chat.complete({ model: "mistral-large-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
     } catch {
         await delay(2000);
-        res = await ia.chat.complete({ model: "mistral-small-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
+        res = await ia.chat.complete({ model: "mistral-large-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
     }
 
     try {
         const content = res.choices[0].message.content;
         const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        console.log(cleanJson)
         const parsed = JSON.parse(cleanJson);
         return Array.isArray(parsed) ? parsed : [parsed];
     } catch { throw new Error("JSON IA invalide"); }
@@ -573,6 +574,8 @@ async function processIncomingMessage(msg) {
 
         const answer = await generate(chatId, text);
 
+        console.log(answer)
+        
         for (const item of answer) {
             if (item.type === "text") {
                 await delay(1000);

@@ -58,7 +58,7 @@ async function getBotConfig() {
         const { data, error } = await supabase
             .from('bot_config')
             .select('prompt, menu')
-            .eq('id', 'bot1')
+            .eq('key', 'bot1')
             .single();
 
         if (error) throw error;

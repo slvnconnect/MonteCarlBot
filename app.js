@@ -1,10 +1,4 @@
-const {
-    default: makeWaSocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
-
+const { default: makeWaSocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Mistral } = require('@mistralai/mistralai');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
@@ -13,97 +7,52 @@ const express = require('express');
 const QRCode = require('qrcode');
 const moment = require('moment-timezone');
 
-// ================= CONFIG =================
-const AUTH_DIR = './auth';
+const app = express();
 const PORT = process.env.PORT || 10000;
 
-const LOCK_ID = "bot1";
-const INSTANCE_ID = process.env.RENDER_SERVICE_ID || Math.random().toString(36);
-
-let sock = null;
 let qrCodeData = null;
-let isStarting = false;
-let cachedConfig = null;
-let lastFetch = 0;
+let sock = null;
+
+// Cache des utilisateurs bloqués
 let blockedUsersCache = new Set();
 
-const CACHE_DURATION = 2 * 60 * 1000;
-const MAX_HISTORY = 200;
+// --- CONFIGURATION CHEMINS ---
+const AUTH_DIR = './auth';
 
-// ================= INIT =================
-const app = express();
 app.get('/', (req, res) => res.send('Bot Dèkoungbé en ligne ✅'));
 
 app.get('/qr', (req, res) => {
-    if (!qrCodeData) return res.send('QR non disponible');
-    const base64 = qrCodeData.replace(/^data:image\/png;base64,/, '');
-    const img = Buffer.from(base64, 'base64');
-    res.writeHead(200, { 'Content-Type': 'image/png' });
+    if (!qrCodeData) return res.send('QR code non disponible (déjà connecté ou en cours)');
+    const base64Data = qrCodeData.replace(/^data:image\/png;base64,/, '');
+    const img = Buffer.from(base64Data, 'base64');
+    res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': img.length
+    });
     res.end(img);
 });
 
-app.listen(PORT, () => console.log(`Serveur écoute sur ${PORT}`));
-
-// ================= SUPABASE =================
-const supabase = createClient(
-    'https://qzdalzdgwnundyafardl.supabase.co',
-    'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g'
-);
-
-// ================= IA =================
-const ia = new Mistral({
-    apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw'
-});
-
-// ================= UTILS =================
-const delay = ms => new Promise(r => setTimeout(r, ms));
+app.listen(PORT, () => console.log(`Serveur écoute sur le port ${PORT}`));
 
 function getBeninTime() {
     return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm");
 }
 
-// ================= LOCK SYSTEM =================
-async function tryAcquireLock() {
-    try {
-        const { data } = await supabase
-            .from('bot_lock')
-            .select('*')
-            .eq('id', LOCK_ID)
-            .maybeSingle();
+const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 
-        if (!data || !data.updated_at ||
-            (Date.now() - new Date(data.updated_at).getTime() > 30000)) {
+const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
 
-            await supabase.from('bot_lock').upsert({
-                id: LOCK_ID,
-                instance: INSTANCE_ID,
-                updated_at: new Date().toISOString()
-            });
+const admin = ["22994847187@s.whatsapp.net"];
 
-            return true;
-        }
+const MAX_HISTORY = 200;
 
-        return data.instance === INSTANCE_ID;
+const delay = ms => new Promise(res => setTimeout(res, ms));
 
-    } catch (e) {
-        console.error("Lock error:", e.message);
-        return false;
-    }
-}
+let cachedConfig = null;
+let lastFetch = 0;
 
-function keepLockAlive() {
-    setInterval(async () => {
-        try {
-            await supabase
-                .from('bot_lock')
-                .update({ updated_at: new Date().toISOString() })
-                .eq('id', LOCK_ID)
-                .eq('instance', INSTANCE_ID);
-        } catch {}
-    }, 15000);
-}
+const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
-// ================= CONFIG =================
 async function getBotConfig() {
     try {
         const { data, error } = await supabase
@@ -113,6 +62,7 @@ async function getBotConfig() {
             .single();
 
         if (error) throw error;
+
         return data || {};
     } catch (e) {
         console.error("Erreur getBotConfig:", e.message);
@@ -120,60 +70,146 @@ async function getBotConfig() {
     }
 }
 
-async function getCachedConfig() {
+const getCachedConfig = async () => {
     const now = Date.now();
-    if (cachedConfig && (now - lastFetch < CACHE_DURATION)) return cachedConfig;
+
+    if (cachedConfig && (now - lastFetch < CACHE_DURATION)) {
+        return cachedConfig;
+    }
 
     cachedConfig = await getBotConfig();
     lastFetch = now;
 
     return cachedConfig;
-}
+};
 
-async function getPrompt() {
+const getPrompt = async () => {
+    const tempsActuel = getBeninTime();
     const config = await getCachedConfig();
-    return (config?.prompt || "")
-        .replaceAll('${menu}', config?.menu || "")
-        .replaceAll('${tempsActuel}', getBeninTime());
-}
 
-// ================= BLOCK =================
+    const systemPrompt = config?.prompt || "";
+    const menu = config?.menu || "";
+
+    return systemPrompt
+        .replaceAll('${menu}', menu)
+        .replaceAll('${tempsActuel}', tempsActuel);
+};
+
+
+// ==================== GESTION DES BLOCAGES ====================
 async function loadBlockedUsers() {
     try {
-        const { data } = await supabase
-            .from('blocked_users')
-            .select('user_id')
-            .eq('blocked', true);
-
+        const { data, error } = await supabase.from('blocked_users').select('user_id').eq('blocked', true);
+        if (error) throw error;
         blockedUsersCache.clear();
-        data?.forEach(r => blockedUsersCache.add(r.user_id));
+        if (data) {
+            data.forEach(row => blockedUsersCache.add(row.user_id));
+        }
+        console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
+    } catch (e) { console.error("Erreur chargement blocages:", e.message); }
+}
 
-    } catch (e) {
-        console.error("Erreur blocage:", e.message);
+async function blockUser(userId) {
+    try {
+        const { data: existing } = await supabase.from('blocked_users').select('user_id').eq('user_id', userId).maybeSingle();
+        if (existing) {
+            await supabase.from('blocked_users').update({ blocked: true, blocked_at: new Date().toISOString() }).eq('user_id', userId);
+        } else {
+            await supabase.from('blocked_users').insert({ user_id: userId, blocked: true, blocked_at: new Date().toISOString() });
+        }
+        blockedUsersCache.add(userId);
+        return true;
+    } catch (e) { return false; }
+}
+
+async function unblockUser(userId) {
+    try {
+        await supabase.from('blocked_users').update({ blocked: false, unblocked_at: new Date().toISOString() }).eq('user_id', userId);
+        blockedUsersCache.delete(userId);
+        return true;
+    } catch (e) { return false; }
+}
+
+function isBlocked(userId) { return blockedUsersCache.has(userId); }
+
+// ==================== SYNCHRO SUPABASE ====================
+async function downloadAuthFromSupabase() {
+    try {
+        const { data, error } = await supabase.from('whatsapp_auth').select('data').eq('id', 'bot1').single();
+        if (error || !data?.data) return;
+        if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+        for (const [fileName, content] of Object.entries(data.data)) {
+            fs.writeFileSync(path.join(AUTH_DIR, fileName), JSON.stringify(content));
+        }
+        console.log("📥 Authentification synchronisée.");
+    } catch (e) { console.error("Erreur Sync Down:", e.message); }
+}
+
+async function uploadAuthToSupabase() {
+    if (!fs.existsSync(AUTH_DIR)) return;
+    try {
+        const files = fs.readdirSync(AUTH_DIR);
+        const bundle = {};
+        for (const file of files) {
+            const fullPath = path.join(AUTH_DIR, file);
+            if (fs.lstatSync(fullPath).isFile()) {
+                try { bundle[file] = JSON.parse(fs.readFileSync(fullPath, 'utf-8')); } catch { }
+            }
+        }
+        await supabase.from('whatsapp_auth').upsert({ id: 'bot1', data: bundle, updated_at: new Date().toISOString() });
+    } catch (e) { console.error("Erreur Sync Up:", e.message); }
+}
+
+async function insertRow(row) { await supabase.from('conversations').insert(row); }
+
+async function loadHistory(chatId) {
+    const { data, error } = await supabase.from('conversations').select('role, content').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(MAX_HISTORY);
+    return error ? [] : (data || []).reverse();
+}
+
+// ==================== GENERATION IA ====================
+async function generate(chatId, userText) {
+    const history = await loadHistory(chatId);
+    const messages = [{ role: "system", content: await getPrompt() }, ...history, { role: "user", content: userText }];
+
+    let res;
+    try {
+        res = await ia.chat.complete({ model: "mistral-large-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
+    } catch {
+        await delay(2000);
+        res = await ia.chat.complete({ model: "mistral-large-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
     }
+
+    try {
+        const content = res.choices[0].message.content;
+        const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").replaceAll('*' , '').trim();
+        console.log(cleanJson)
+        const parsed = JSON.parse(cleanJson);
+        return Array.isArray(parsed) ? parsed : [parsed];
+    } catch { throw new Error("JSON IA invalide"); }
 }
 
-function isBlocked(userId) {
-    return blockedUsersCache.has(userId);
-}
-
-// ================= BOT =================
+// ==================== CORE BOT ====================
 async function startBot() {
-    if (isStarting) return;
-    isStarting = true;
-
-    const ok = await tryAcquireLock();
-    if (!ok) {
-        console.log("⛔ Instance déjà active");
-        process.exit(0);
+    // Création du dossier auth s'il n'existe pas
+    if (!fs.existsSync(AUTH_DIR)) {
+        fs.mkdirSync(AUTH_DIR, { recursive: true });
     }
 
-    keepLockAlive();
-
-    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    // Anti-conflit Render
+    const lockPath = path.join(AUTH_DIR, 'bot.lock');
+    if (fs.existsSync(lockPath)) {
+        const lockTime = fs.readFileSync(lockPath, 'utf8');
+        if (Date.now() - parseInt(lockTime) < 60000) {
+            console.log("⚠️ Conflit détecté. Arrêt pour laisser l'instance active.");
+            process.exit(0);
+        }
+    }
+    fs.writeFileSync(lockPath, Date.now().toString());
 
     await loadBlockedUsers();
-
+    await downloadAuthFromSupabase();
+    
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
 
@@ -181,27 +217,34 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "20.0.04"]
+        syncFullHistory: false,
+        markOnlineOnConnect: true,
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        connectTimeoutMs: 60000
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+        await saveCreds();
+        await uploadAuthToSupabase();
+    });
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, qr, lastDisconnect } = update;
-
+        const { connection, lastDisconnect, qr } = update;
         if (qr) qrCodeData = await QRCode.toDataURL(qr);
 
         if (connection === 'close') {
-            const code = lastDisconnect?.error?.output?.statusCode;
-
-            if (code !== DisconnectReason.loggedOut) {
+            const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
+            if (isConflict) { process.exit(0); }
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            if (statusCode !== DisconnectReason.loggedOut) {
                 setTimeout(startBot, 5000);
             }
         }
-
         if (connection === 'open') {
             qrCodeData = null;
-            console.log("✅ Bot connecté");
+            console.log('✅ Bot Dèkoungbé opérationnel');
+            // Update lock toutes les 30 secondes
+            setInterval(() => { if(fs.existsSync(lockPath)) fs.writeFileSync(lockPath, Date.now().toString()); }, 30000);
         }
     });
 
@@ -270,16 +313,8 @@ async function processIncomingMessage(msg) {
     }
 }
 
-//================= CRASH PROTECTION =================
-process.on('uncaughtException', err => {
-    console.error("💥 Crash:", err);
-    process.exit(1);
-});
+setInterval(async () => {
+    if (sock?.user) { try { await sock.sendPresenceUpdate('available'); } catch { } }
+}, 45000);
 
-process.on('unhandledRejection', err => {
-    console.error("💥 Rejection:", err);
-    process.exit(1);
-});
-
-// ================= START =================
 startBot();

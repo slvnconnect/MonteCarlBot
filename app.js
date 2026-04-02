@@ -222,6 +222,8 @@ async function processIncomingMessage(msg) {
 
     await sock.readMessages([msg.key]);
     await sock.sendPresenceUpdate("composing", chatId);
+    
+    console.log(`Message reçu de ${chatId} : ${text || "Indisponible"}`)
 
     try {
         const history = await loadHistory(chatId);
@@ -244,6 +246,7 @@ async function processIncomingMessage(msg) {
         
         const content = res.choices[0].message.content;
         const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        console.log(cleanJson)
         const answer = JSON.parse(cleanJson);
         const finalArray = Array.isArray(answer) ? answer : [answer];
 

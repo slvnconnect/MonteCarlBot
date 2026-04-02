@@ -13,8 +13,12 @@ const PORT = process.env.PORT || 10000;
 let qrCodeData = null;
 let sock = null;
 
-// Cache des utilisateurs bloqués (pour éviter d'appeler Supabase à chaque message)
+// Cache des utilisateurs bloqués
 let blockedUsersCache = new Set();
+
+// --- CONFIGURATION CHEMINS ---
+const AUTH_DIR = './auth';
+const lockPath = path.join(AUTH_DIR, 'bot.lock');
 
 app.get('/', (req, res) => res.send('Bot Dèkoungbé en ligne ✅'));
 
@@ -39,11 +43,9 @@ const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
 
-const admin = ["120363407014174901@g.us"]; // Groupe admin
+const admin = ["22994847187@s.whatsapp.net"]; // Groupe admin
 
 const MAX_HISTORY = 200;
-
-const AUTH_DIR = './auth';
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -368,78 +370,41 @@ Localisation : Godomey, Dèkoungbé, Fin clôture de l'usine d'engrais de Dèkou
 `;
 };
 
-// ==================== GESTION DES BLOCAGES AVEC SUPABASE ====================
-
+// ==================== GESTION DES BLOCAGES ====================
 async function loadBlockedUsers() {
     try {
-        const { data, error } = await supabase
-            .from('blocked_users')
-            .select('user_id')
-            .eq('blocked', true);
-        
+        const { data, error } = await supabase.from('blocked_users').select('user_id').eq('blocked', true);
         if (error) throw error;
-        
         blockedUsersCache.clear();
         data.forEach(row => blockedUsersCache.add(row.user_id));
         console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
-    } catch (e) {
-        console.error("Erreur chargement blocages:", e.message);
-    }
+    } catch (e) { console.error("Erreur chargement blocages:", e.message); }
 }
 
 async function blockUser(userId) {
     try {
-        // Vérifier si déjà bloqué
-        const { data: existing } = await supabase
-            .from('blocked_users')
-            .select('user_id')
-            .eq('user_id', userId)
-            .single();
-        
+        const { data: existing } = await supabase.from('blocked_users').select('user_id').eq('user_id', userId).single();
         if (existing) {
-            // Mettre à jour
-            await supabase
-                .from('blocked_users')
-                .update({ blocked: true, blocked_at: new Date().toISOString() })
-                .eq('user_id', userId);
+            await supabase.from('blocked_users').update({ blocked: true, blocked_at: new Date().toISOString() }).eq('user_id', userId);
         } else {
-            // Insérer
-            await supabase
-                .from('blocked_users')
-                .insert({ user_id: userId, blocked: true, blocked_at: new Date().toISOString() });
+            await supabase.from('blocked_users').insert({ user_id: userId, blocked: true, blocked_at: new Date().toISOString() });
         }
-        
         blockedUsersCache.add(userId);
-        console.log(`🔒 Utilisateur bloqué: ${userId}`);
         return true;
-    } catch (e) {
-        console.error("Erreur blocage:", e.message);
-        return false;
-    }
+    } catch (e) { return false; }
 }
 
 async function unblockUser(userId) {
     try {
-        await supabase
-            .from('blocked_users')
-            .update({ blocked: false, unblocked_at: new Date().toISOString() })
-            .eq('user_id', userId);
-        
+        await supabase.from('blocked_users').update({ blocked: false, unblocked_at: new Date().toISOString() }).eq('user_id', userId);
         blockedUsersCache.delete(userId);
-        console.log(`🔓 Utilisateur débloqué: ${userId}`);
         return true;
-    } catch (e) {
-        console.error("Erreur déblocage:", e.message);
-        return false;
-    }
+    } catch (e) { return false; }
 }
 
-function isBlocked(userId) {
-    return blockedUsersCache.has(userId);
-}
+function isBlocked(userId) { return blockedUsersCache.has(userId); }
 
-// ==================== FIN GESTION BLOCAGES ====================
-
+// ==================== SYNCHRO SUPABASE ====================
 async function downloadAuthFromSupabase() {
     try {
         const { data, error } = await supabase.from('whatsapp_auth').select('data').eq('id', 'bot1').single();
@@ -463,75 +428,53 @@ async function uploadAuthToSupabase() {
                 try { bundle[file] = JSON.parse(fs.readFileSync(fullPath, 'utf-8')); } catch { }
             }
         }
-        await supabase.from('whatsapp_auth').upsert({
-            id: 'bot1',
-            data: bundle,
-            updated_at: new Date().toISOString()
-        });
+        await supabase.from('whatsapp_auth').upsert({ id: 'bot1', data: bundle, updated_at: new Date().toISOString() });
     } catch (e) { console.error("Erreur Sync Up:", e.message); }
 }
 
-async function insertRow(row) {
-    await supabase.from('conversations').insert(row);
-}
+async function insertRow(row) { await supabase.from('conversations').insert(row); }
 
 async function loadHistory(chatId) {
-    const { data, error } = await supabase
-        .from('conversations')
-        .select('role, content')
-        .eq('chat_id', chatId)
-        .order('created_at', { ascending: false })
-        .limit(MAX_HISTORY);
+    const { data, error } = await supabase.from('conversations').select('role, content').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(MAX_HISTORY);
     return error ? [] : (data || []).reverse();
 }
 
+// ==================== GENERATION IA ====================
 async function generate(chatId, userText) {
     const history = await loadHistory(chatId);
-    const messages = [
-        { role: "system", content: getPrompt() },
-        ...history,
-        { role: "user", content: userText }
-    ];
+    const messages = [{ role: "system", content: getPrompt() }, ...history, { role: "user", content: userText }];
 
     let res;
     try {
-        res = await ia.chat.complete({
-            model: "mistral-large-latest",
-            messages,
-            responseFormat: { type: "json_object" },
-            temperature: 0.0,
-            top_p: 0.9,
-            presence_penalty: 0.6
-        });
+        res = await ia.chat.complete({ model: "mistral-small-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
     } catch {
         await delay(2000);
-        res = await ia.chat.complete({
-            model: "mistral-large-latest",
-            messages,
-            responseFormat: { type: "json_object" },
-            temperature: 0.0,
-            top_p: 0.9,
-            presence_penalty: 0.6
-        });
+        res = await ia.chat.complete({ model: "mistral-small-latest", messages, responseFormat: { type: "json_object" }, temperature: 0.0, top_p: 0.9, presence_penalty: 0.6 });
     }
 
     try {
         const content = res.choices[0].message.content;
-        console.log("IA RAW:", content);
         const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
         const parsed = JSON.parse(cleanJson);
         return Array.isArray(parsed) ? parsed : [parsed];
-    } catch {
-        throw new Error("JSON IA invalide");
-    }
+    } catch { throw new Error("JSON IA invalide"); }
 }
 
+// ==================== CORE BOT ====================
 async function startBot() {
+    // ANTI-CONFLIT RENDER
+    if (fs.existsSync(lockPath)) {
+        const lockTime = fs.readFileSync(lockPath, 'utf8');
+        if (Date.now() - parseInt(lockTime) < 60000) {
+            console.log("⚠️ Conflit détecté. Arrêt pour laisser l'instance active.");
+            process.exit(0);
+        }
+    }
+    fs.writeFileSync(lockPath, Date.now().toString());
 
-    // Charger les utilisateurs bloqués au démarrage
     await loadBlockedUsers();
-
     await downloadAuthFromSupabase();
+    
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
 
@@ -539,10 +482,12 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        syncFullHistory: true,
-        markOnlineOnConnect: false,
+        syncFullHistory: false, // OFF pour éviter le crash RAM sur Render
+        markOnlineOnConnect: true,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         connectTimeoutMs: 60000,
+        // Correction erreur de déchiffrement
+        getMessage: async (key) => { return { conversation: 'Message déchiffré...' } }
     });
 
     sock.ev.on('creds.update', async () => {
@@ -552,150 +497,97 @@ async function startBot() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            qrCodeData = await QRCode.toDataURL(qr);
-        }
+        if (qr) qrCodeData = await QRCode.toDataURL(qr);
 
         if (connection === 'close') {
             const isConflict = lastDisconnect?.error?.raw?.tag === 'conflict';
-
-            if (isConflict) {
-                console.log('⚡ Conflit, redémarrage...');
-                process.exit(0);
-            }
-
+            if (isConflict) { process.exit(0); }
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             if (statusCode !== DisconnectReason.loggedOut) {
-                console.log('🔄 Reconnexion dans 3s...');
-                setTimeout(startBot, 3000);
+                setTimeout(startBot, 5000);
             }
         }
-
         if (connection === 'open') {
             qrCodeData = null;
             console.log('✅ Bot Dèkoungbé opérationnel');
+            // Update lock
+            setInterval(() => { if(fs.existsSync(lockPath)) fs.writeFileSync(lockPath, Date.now().toString()); }, 30000);
         }
     });
 
-   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== 'notify') return;
-
-    for (const msg of messages) {
-        if (!msg?.message) continue;
-
-        const chatId = msg.key.remoteJid;
-        console.log("Message reçu de :", chatId);
-
-        // Ignorer les statuts
-        if (chatId === 'status@broadcast') continue;
-
-        // Logger les groupes
-        if (chatId.endsWith('@g.us')) {
-            console.log("📢 Groupe ID :", chatId);
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        for (const msg of messages) {
+            // Traitement asynchrone pour ne rater aucun message
+            processIncomingMessage(msg).catch(e => console.error(e));
         }
-
-        // Ignorer les chaînes
-        if (chatId.endsWith('@newsletter')) continue;
-
-        // Ignorer les diffusions
-        if (chatId.endsWith('@broadcast')) continue;
-
-        // Vérifier si l'utilisateur est bloqué (après avoir chargé l'ID)
-        if (isBlocked(chatId)) {
-            console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
-            continue;
-        }
-
-        let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
-        // Vérifier si c'est un message audio
-        if (msg.message.audioMessage) {
-            text = "Voice message";
-        }
-
-        if (!text) continue;
-
-        // Commande de blocage (admin uniquement)
-        if (text.startsWith('/stop_bot')) {
-            const targetId = text.split(' ')[1];
-            if (targetId && admin.includes(chatId)) {
-                await blockUser(targetId);
-                await sock.sendMessage(chatId, { text: `🔒 Utilisateur ${targetId} bloqué` });
-            } else if (admin.includes(chatId)) {
-                await blockUser(chatId);
-                await sock.sendMessage(chatId, { text: "🔒 Vous avez été bloqué. Contactez l'admin pour être débloqué." });
-            }
-            return;
-        }
-
-        // Commande de déblocage
-        if (text.startsWith('/unlock_bot')) {
-            const targetId = text.split(' ')[1];
-            if (targetId && admin.includes(chatId)) {
-                await unblockUser(targetId);
-                await sock.sendMessage(chatId, { text: `🔓 Utilisateur ${targetId} débloqué` });
-            } else if (admin.includes(chatId)) {
-                await unblockUser(chatId);
-                await sock.sendMessage(chatId, { text: "🔓 Vous avez été débloqué" });
-            }
-            return;
-        }
-
-        if (!msg?.message || msg.key.fromMe) continue;
-
-        const hasMedia = ['imageMessage', 'videoMessage', 'audioMessage', 'stickerMessage', 'documentMessage'].some(t => msg.message[t]);
-        if (hasMedia && !msg.message.audioMessage) {
-            await sock.sendMessage(chatId, { text: "⚠️ Désolé, je ne traite que le texte." });
-            continue;
-        }
-
-        await sock.readMessages([msg.key]);
-
-        await sock.sendPresenceUpdate("composing", chatId);
-
-        try {
-            console.log(`📩 Message de ${msg.key.remoteJidAlt?.split('@')[0] || chatId}: ${text}`);
-            await insertRow({ chat_id: chatId, role: "user", content: text });
-
-            const answer = await generate(chatId, text);
-
-            for (const item of answer) {
-                if (item.type === "text") {
-                    await delay(1000);
-                    await sock.sendMessage(chatId, { text: item.text });
-                    console.log("IA > ", item.text);
-                    await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
-                }
-
-                if (item.type === "commande") {
-                    await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + 'Heure : ' + getBeninTime() + JSON.stringify(item) });
-
-                    const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour || 'maintenant'}\nNuméro whatsapp : ${msg.key.remoteJidAlt?.split('@')[0] || chatId}\nHeure : ${getBeninTime()}\n`;
-
-                    for (const num of admin) {
-                        await sock.sendPresenceUpdate("composing", num);
-                        await sock.sendMessage(num, { text: rapport });
-                        await sock.sendPresenceUpdate("paused", num);
-                    }
-                }
-            }
-
-            await sock.sendPresenceUpdate("paused", chatId);
-
-        } catch (e) {
-            console.error("⚠️ Erreur :", e.message);
-            await sock.sendMessage(chatId, { text: "Désolé, pouvez-vous reformuler votre demande ?" });
-        }
-    }
-});     
-
-        setInterval(async () => {
-        if (sock?.user) {
-            try { await sock.sendPresenceUpdate('available'); } catch { }
-        }
-    }, 45000);
+    });
 }
 
-startBot();
+// LOGIQUE DE TRAITEMENT (Ta boucle originale)
+async function processIncomingMessage(msg) {
+    if (!msg?.message) return;
+    const chatId = msg.key.remoteJid;
+    if (chatId === 'status@broadcast' || chatId.endsWith('@newsletter') || isBlocked(chatId)) return;
 
+    let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if (msg.message.audioMessage) text = "Voice message";
+    if (!text || msg.key.fromMe) return;
+
+    // Commandes Admin
+    if (text.startsWith('/stop_bot')) {
+        const targetId = text.split(' ')[1];
+        if (targetId && admin.includes(chatId)) {
+            await blockUser(targetId);
+            await sock.sendMessage(chatId, { text: `🔒 Utilisateur ${targetId} bloqué` });
+        }
+        return;
+    }
+    if (text.startsWith('/unlock_bot')) {
+        const targetId = text.split(' ')[1];
+        if (targetId && admin.includes(chatId)) {
+            await unblockUser(targetId);
+            await sock.sendMessage(chatId, { text: `🔓 Utilisateur ${targetId} débloqué` });
+        }
+        return;
+    }
+
+    const hasMedia = ['imageMessage', 'videoMessage', 'stickerMessage', 'documentMessage'].some(t => msg.message[t]);
+    if (hasMedia) {
+        await sock.sendMessage(chatId, { text: "⚠️ Désolé, je ne traite que le texte." });
+        return;
+    }
+
+    await sock.readMessages([msg.key]);
+    await sock.sendPresenceUpdate("composing", chatId);
+
+    try {
+        console.log(`📩 Message de ${chatId}: ${text}`);
+        await insertRow({ chat_id: chatId, role: "user", content: text });
+
+        const answer = await generate(chatId, text);
+
+        for (const item of answer) {
+            if (item.type === "text") {
+                await delay(1000);
+                await sock.sendMessage(chatId, { text: item.text });
+                await insertRow({ chat_id: chatId, role: "assistant", content: item.text });
+            }
+            if (item.type === "commande") {
+                await insertRow({ chat_id: chatId, role: "assistant", content: '[COMMANDE]: ' + JSON.stringify(item) });
+                const rapport = `👨‍🍳 NOUVELLE COMMANDE\n📞 Tel : ${item.phone}\n📍 Adresse : ${item.address}\n🍽️ ${item.menu}\n🕒 Livraison : ${item.delivery_hour || 'maintenant'}\nHeure : ${getBeninTime()}\n`;
+                for (const num of admin) { await sock.sendMessage(num, { text: rapport }); }
+            }
+        }
+    } catch (e) {
+        await sock.sendMessage(chatId, { text: "Désolé, pouvez-vous reformuler votre demande ?" });
+    } finally {
+        await sock.sendPresenceUpdate("paused", chatId);
+    }
+}
+
+setInterval(async () => {
+    if (sock?.user) { try { await sock.sendPresenceUpdate('available'); } catch { } }
+}, 45000);
+
+startBot();

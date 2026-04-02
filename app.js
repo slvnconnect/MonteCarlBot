@@ -211,11 +211,11 @@ async function processIncomingMessage(msg) {
     if (!text) return;
 
     // Commandes Admin de blocage
-    if (text.startsWith('/stop_bot'){
+    if (text.startsWith('/stop_bot')){
         await blockUser(chatId);
         return;
     }
-    if (text.startsWith('/unlock_bot') {
+    if (text.startsWith('/unlock_bot')){
         await unblockUser(chatId);
         return;
     }

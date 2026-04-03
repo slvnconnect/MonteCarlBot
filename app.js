@@ -240,7 +240,7 @@ async function processIncomingMessage(msg) {
         const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
-            temperature: 0.0,
+            temperature: 0.2,
             top_p : 0.1 ,
             presence_penalty : 0.4
         };
@@ -293,11 +293,10 @@ async function processIncomingMessage(msg) {
 👤 Numéro WhatsApp : ${msg.key.remoteJidAlt}
 ⏰ Heure : ${getBeninTime()}`;
     
-    for (const num of admin) { 
-        await sock.sendMessage(num, { text: rapport }); 
-    }
-}
-
+                for (const num of admin) { 
+                    await sock.sendMessage(num, { text: rapport }); 
+                }
+            }
         }
     } catch (e) {
         console.error("⚠️ Erreur:", e.message);

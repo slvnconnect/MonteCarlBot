@@ -285,6 +285,19 @@ async function processIncomingMessage(msg) {
                 
                 for (const num of admin) { await sock.sendMessage(num, { text: rapport }); }
             }
+            else if (item.type === "plainte") {
+                await insertRow({ chat_id: chatId, role: "assistant", content: `[PLAINTE]: ${JSON.stringify(item)} | ${getBeninTime()}` });
+    
+                const rapport = `\n⚠️ *NOUVELLE PLAINTE* ⚠️
+📝 Cause : ${item.cause}
+👤 Numéro WhatsApp : ${msg.key.remoteJidAlt}
+⏰ Heure : ${getBeninTime()}`;
+    
+    for (const num of admin) { 
+        await sock.sendMessage(num, { text: rapport }); 
+    }
+}
+
         }
     } catch (e) {
         console.error("⚠️ Erreur:", e.message);

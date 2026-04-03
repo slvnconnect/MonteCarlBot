@@ -247,7 +247,7 @@ async function processIncomingMessage(msg) {
 
         let res;
         try {
-            res = await ia.chat.complete({ model: "mistral-small-2603", ...aiOptions });
+            res = await ia.chat.complete({ model: "mistral-large-latest", ...aiOptions });
         } catch (err) {
             console.error("Repli sur mistral-small...", err.message);
             res = await ia.chat.complete({ model: "mistral-large-2411", ...aiOptions });

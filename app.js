@@ -200,7 +200,7 @@ async function startBot() {
 
 // ==================== LOGIQUE IA & TRAITEMENT ====================
 async function processIncomingMessage(msg) {
-    if (!msg?.message || msg.key.fromMe) return;
+    if (!msg?.message) return;
     const chatId = msg.key.remoteJid;
     if (chatId.includes('@broadcast'))return;
     if(chatId.includes('@newsletter')) return
@@ -211,17 +211,17 @@ async function processIncomingMessage(msg) {
     if (!text) return;
 
     // ========== COMMANDES ADMIN (toujours exécutées même si bloqué) ==========
-    if (text === '/stop_bot') {
+    if (text.includes('/stop_bot')) {
         await blockUser(chatId);
         return;
     }
-    if (text === '/unlock_bot') {
+    if (text.includes('/unlock_bot')) {
         await unblockUser(chatId);
         return;
     }
 
     // ========== VÉRIFICATION BLOCAGE (après les commandes admin) ==========
-    if (isBlocked(chatId)) {
+    if (isBlocked(chatId) || msg.key.fromMe) {
         console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
         return;
     }

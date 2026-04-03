@@ -192,7 +192,6 @@ async function startBot() {
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-        if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
             processIncomingMessage(msg).catch(e => console.error(e));
         }
@@ -241,7 +240,9 @@ async function processIncomingMessage(msg) {
         const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
-            temperature: 0.1,
+            temperature: 0.0,
+            top_p : 0.5 ,
+            presence_penalty : 0.4
         };
 
         let res;

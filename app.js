@@ -41,7 +41,7 @@ process.on('unhandledRejection', (reason) => console.error('💥 Promesse rejet�
 // ==================== SERVICES EXTERNES ====================
 const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
-const admin = ["22994847187@s.whatsapp.net"];
+const admin = ["120363407014174901@g.us"];
 
 // ==================== UTILS ====================
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -213,12 +213,10 @@ async function processIncomingMessage(msg) {
     // ========== COMMANDES ADMIN (Exécutées en priorité, même par moi-même) ==========
     if (text.includes('/stop_bot')) {
         await blockUser(chatId);
-        await sock.sendMessage(chatId, { text: "🚫 Le bot a été stoppé pour cette discussion." });
         return;
     }
     if (text.includes('/unlock_bot')) {
         await unblockUser(chatId);
-        await sock.sendMessage(chatId, { text: "✅ Le bot est de nouveau actif ici." });
         return;
     }
 

@@ -246,10 +246,10 @@ async function processIncomingMessage(msg) {
 
         let res;
         try {
-            res = await ia.chat.complete({ model: "mistral-large-2411", ...aiOptions });
+            res = await ia.chat.complete({ model: "mistral-small-2603", ...aiOptions });
         } catch (err) {
             console.error("Repli sur mistral-small...", err.message);
-            res = await ia.chat.complete({ model: "mistral-small-latest", ...aiOptions });
+            res = await ia.chat.complete({ model: "mistral-large-2411", ...aiOptions });
         }
         
         const content = res.choices[0].message.content;

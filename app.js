@@ -45,6 +45,7 @@ const admin = ["22994847187@s.whatsapp.net"];
 
 // ==================== UTILS ====================
 const delay = ms => new Promise(res => setTimeout(res, ms));
+
 function getBeninTime() { return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm"); }
 
 async function insertRow(row) { 
@@ -191,7 +192,7 @@ async function startBot() {
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-        if (type !== 'notify') return;
+        if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
             processIncomingMessage(msg).catch(e => console.error(e));
         }
@@ -202,24 +203,31 @@ async function startBot() {
 async function processIncomingMessage(msg) {
     if (!msg?.message || msg.key.fromMe) return;
     const chatId = msg.key.remoteJid;
-    if (chatId.includes('@broadcast') || isBlocked(chatId)) return;
-
-    // Détection Audio & Texte
+    if (chatId.includes('@broadcast'))return;
+    if(chatId.includes('@newsletter')) return
+    
     let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
     if (msg.message.audioMessage) text = "Voice message";
     
     if (!text) return;
 
-    // Commandes Admin de blocage
-    if (text.startsWith('/stop_bot')){
+    // ========== COMMANDES ADMIN (toujours exécutées même si bloqué) ==========
+    if (text === '/stop_bot') {
         await blockUser(chatId);
         return;
     }
-    if (text.startsWith('/unlock_bot')){
+    if (text === '/unlock_bot') {
         await unblockUser(chatId);
         return;
     }
 
+    // ========== VÉRIFICATION BLOCAGE (après les commandes admin) ==========
+    if (isBlocked(chatId)) {
+        console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
+        return;
+    }
+
+    // ========== SUITE DU TRAITEMENT NORMAL ==========
     await sock.readMessages([msg.key]);
     await sock.sendPresenceUpdate("composing", chatId);
     
@@ -299,3 +307,4 @@ setInterval(async () => {
 }, 45000);
 
 startBot();
+

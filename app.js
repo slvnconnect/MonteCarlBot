@@ -241,7 +241,7 @@ async function processIncomingMessage(msg) {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
             temperature: 0.0,
-            top_p : 0.5 ,
+            top_p : 0.1 ,
             presence_penalty : 0.4
         };
 

@@ -202,27 +202,29 @@ async function startBot() {
 async function processIncomingMessage(msg) {
     if (!msg?.message) return;
     const chatId = msg.key.remoteJid;
-    if (chatId.includes('@broadcast'))return;
-    if(chatId.includes('@newsletter')) return
+    if (chatId.includes('@broadcast')) return;
+    if (chatId.includes('@newsletter')) return;
     
     let text = msg.message.conversation || msg.message.extendedTextMessage?.text;
     if (msg.message.audioMessage) text = "Voice message";
     
     if (!text) return;
 
-    // ========== COMMANDES ADMIN (toujours exécutées même si bloqué) ==========
+    // ========== COMMANDES ADMIN (Exécutées en priorité, même par moi-même) ==========
     if (text.includes('/stop_bot')) {
         await blockUser(chatId);
+        await sock.sendMessage(chatId, { text: "🚫 Le bot a été stoppé pour cette discussion." });
         return;
     }
     if (text.includes('/unlock_bot')) {
         await unblockUser(chatId);
+        await sock.sendMessage(chatId, { text: "✅ Le bot est de nouveau actif ici." });
         return;
     }
 
-    // ========== VÉRIFICATION BLOCAGE (après les commandes admin) ==========
+    // ========== VÉRIFICATION FILTRES (Après les commandes) ==========
+    // On ignore si le chat est bloqué OU si le message vient du bot lui-même (fromMe)
     if (isBlocked(chatId) || msg.key.fromMe) {
-        console.log(`🚫 Message ignoré de ${chatId} (bloqué)`);
         return;
     }
 
@@ -240,9 +242,7 @@ async function processIncomingMessage(msg) {
         const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
-            temperature: 0.2,
-            top_p : 0.1 ,
-            presence_penalty : 0.4
+            temperature: 0.1,
         };
 
         let res;
@@ -250,7 +250,7 @@ async function processIncomingMessage(msg) {
             res = await ia.chat.complete({ model: "mistral-large-latest", ...aiOptions });
         } catch (err) {
             console.error("Repli sur mistral-small...", err.message);
-            res = await ia.chat.complete({ model: "mistral-large-2411", ...aiOptions });
+            res = await ia.chat.complete({ model: "mistral-small-2603", ...aiOptions });
         }
         
         const content = res.choices[0].message.content;
@@ -290,7 +290,7 @@ async function processIncomingMessage(msg) {
     
                 const rapport = `\n⚠️ *NOUVELLE PLAINTE* ⚠️
 📝 Cause : ${item.cause}
-👤 Numéro WhatsApp : ${msg.key.remoteJidAlt}
+👤 Numéro WhatsApp : ${msg.key.remoteJidAlt.split('@')[0] || chatId}
 ⏰ Heure : ${getBeninTime()}`;
     
                 for (const num of admin) { 
@@ -305,6 +305,7 @@ async function processIncomingMessage(msg) {
         await sock.sendPresenceUpdate("paused", chatId);
     }
 }
+
 
 async function loadHistory(chatId) {
     const { data } = await supabase.from('conversations')

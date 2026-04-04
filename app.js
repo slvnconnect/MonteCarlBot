@@ -41,7 +41,7 @@ process.on('unhandledRejection', (reason) => console.error('ðŸ’¥ Promesse rejetÃ
 // ==================== SERVICES EXTERNES ====================
 const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
-const admin = ["22994847187@s.whatsapp.net"];
+const admin = ["120363407014174901@g.us"];
 
 // ==================== UTILS ====================
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -249,7 +249,7 @@ async function processIncomingMessage(msg) {
         try {
             res = await ia.chat.complete({ model: "mistral-medium-2508", ...aiOptions });
         } catch (err) {
-            console.error("Repli sur mistral-small...", err.message);
+            console.error("Repli sur mistral-medium 2505...", err.message);
             res = await ia.chat.complete({ model: "mistral-medium-2505", ...aiOptions });
         }
         

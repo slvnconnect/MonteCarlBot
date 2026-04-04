@@ -241,7 +241,8 @@ async function processIncomingMessage(msg) {
         const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
-            temperature: 0.1,
+            temperature: 0.2,
+            presence_penalty : 0.6
         };
 
         let res;
@@ -249,7 +250,7 @@ async function processIncomingMessage(msg) {
             res = await ia.chat.complete({ model: "mistral-medium-2508", ...aiOptions });
         } catch (err) {
             console.error("Repli sur mistral-small...", err.message);
-            res = await ia.chat.complete({ model: "mistral-medium-2503", ...aiOptions });
+            res = await ia.chat.complete({ model: "mistral-medium-2505", ...aiOptions });
         }
         
         const content = res.choices[0].message.content;

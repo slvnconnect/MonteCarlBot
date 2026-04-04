@@ -202,6 +202,7 @@ async function startBot() {
 async function processIncomingMessage(msg) {
     if (!msg?.message) return;
     const chatId = msg.key.remoteJid;
+    if(chatId.includes('@g.us')) return
     if (chatId.includes('@broadcast')) return;
     if (chatId.includes('@newsletter')) return;
     
@@ -245,7 +246,7 @@ async function processIncomingMessage(msg) {
 
         let res;
         try {
-            res = await ia.chat.complete({ model: "mistral-large-latest", ...aiOptions });
+            res = await ia.chat.complete({ model: "mistral-large-2412", ...aiOptions });
         } catch (err) {
             console.error("Repli sur mistral-small...", err.message);
             res = await ia.chat.complete({ model: "mistral-small-2603", ...aiOptions });

@@ -241,7 +241,7 @@ async function processIncomingMessage(msg) {
         const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
-            temperature: 0.2,
+            temperature: 0.0,
             presence_penalty : 0.6
         };
 
@@ -281,7 +281,7 @@ async function processIncomingMessage(msg) {
                     rapport += `🍽️ ${item.menu}\n`;
                 }
                 
-                rapport += `🕒 Livraison voulue : ${item.delivery_hour}\nHeure de lancement: ${getBeninTime()}\nNuméro WhatsApp : ${msg.key.remoteJidAlt.split('@')[0]}`;
+                rapport += `🕒 Livraison voulue : ${item.delivery_hour || 'Pas d´heure précisé' }\nHeure de lancement: ${getBeninTime()}\nNuméro WhatsApp : ${msg.key.remoteJidAlt.split('@')[0]}`;
                 
                 for (const num of admin) { await sock.sendMessage(num, { text: rapport }); }
             }

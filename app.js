@@ -1,18 +1,17 @@
-const {
-    default : makeWASocket ,
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion 
-} = require('@whiskeysockets/baileys');
-const { Mistral } = require('@mistralai/mistralai');
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs'); 
-const path = require('path');
-const express = require('express');
-const QRCode = require('qrcode')
-const moment = require('moment-timezone');
-const { Boom } = require('@hapi/boom');
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import { Mistral } from '@mistralai/mistralai';
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
+import express from 'express';
+import QRCode from 'qrcode';
+import moment from 'moment-timezone';
+import { Boom } from '@hapi/boom';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 
 // ==================== CONFIGURATION & SETTINGS ====================

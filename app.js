@@ -6,10 +6,11 @@ const path = require('path');
 const express = require('express');
 const QRCode = require('qrcode');
 const moment = require('moment-timezone');
+const { Boom } = require('@hapi/boom');
 
 // ==================== CONFIGURATION & SETTINGS ====================
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 const AUTH_DIR = './auth';
 
 let qrCodeData = null;
@@ -17,6 +18,7 @@ let sock = null;
 let blockedUsersCache = new Set();
 let cachedConfig = null;
 let lastFetch = 0;
+let isConnecting = false; // Anti-double lancement
 
 const CACHE_DURATION = 2 * 60 * 1000;
 const MAX_HISTORY = 200; 
@@ -34,22 +36,27 @@ app.get('/qr', (req, res) => {
 
 app.listen(PORT, () => console.log(`🚀 Serveur actif sur le port ${PORT}`));
 
-// ==================== PROTECTIONS ANTI-CRASH ====================
-process.on('uncaughtException', (err) => console.error('💥 Erreur critique interceptée:', err));
-process.on('unhandledRejection', (reason) => console.error('💥 Promesse rejetée non gérée:', reason));
+// ==================== PROTECTIONS ANTI-CRASH GLOBALES ====================
+process.on('uncaughtException', (err) => {
+    console.error('💥 Erreur critique interceptée:', err);
+    // On ne relance pas startBot() ici pour éviter les boucles infinies de crash
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('💥 Promesse rejetée non gérée:', reason);
+});
 
 // ==================== SERVICES EXTERNES ====================
 const ia = new Mistral({ apiKey: 'O2zJ5zADkoYVagGOR52tkxXrQFZ9SqQw' });
 const supabase = createClient('https://qzdalzdgwnundyafardl.supabase.co', 'sb_publishable_o0UzZ3WiSqn-G9jN1IG_AA_Bk4nef6g');
-const admin = ["120363407014174901@g.us"];
+const admin = ["22994847187@s.whatsapp.net"];
 
 // ==================== UTILS ====================
 const delay = ms => new Promise(res => setTimeout(res, ms));
-
 function getBeninTime() { return moment().tz("Africa/Porto-Novo").format("dddd DD MMMM YYYY, HH:mm"); }
 
 async function insertRow(row) { 
-    await supabase.from('conversations').insert(row); 
+    try { await supabase.from('conversations').insert(row); } catch (e) { console.error("Erreur DB:", e.message); }
 }
 
 // ==================== GESTION DES BLOCAGES ====================
@@ -58,11 +65,9 @@ async function loadBlockedUsers() {
         const { data, error } = await supabase.from('blocked_users').select('user_id').eq('blocked', true);
         if (error) throw error;
         blockedUsersCache.clear();
-        if (data) {
-            data.forEach(row => blockedUsersCache.add(row.user_id));
-        }
+        if (data) data.forEach(row => blockedUsersCache.add(row.user_id));
         console.log(`📋 ${blockedUsersCache.size} utilisateurs bloqués chargés`);
-    } catch (e) { console.error("Erreur chargement blocages:", e.message); }
+    } catch (e) { console.error("Erreur blocages:", e.message); }
 }
 
 async function blockUser(userId) {
@@ -133,19 +138,29 @@ async function uploadAuth() {
             }
         }
         await supabase.from('whatsapp_auth').upsert({ id: 'bot1', data: bundle, updated_at: new Date().toISOString() });
+        console.log("📤 Session synchronisée sur Supabase");
     } catch (e) { console.error("Erreur Sync Up:", e.message); }
 }
 
-// ==================== CORE BOT ====================
+// ==================== CORE BOT (LE BLINDAGE) ====================
 async function startBot() {
+    if (isConnecting) return;
+    isConnecting = true;
+
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
+    // --- Gestion intelligente du Lock (Anti-Zombie) ---
     const lockPath = path.join(AUTH_DIR, 'bot.lock');
     if (fs.existsSync(lockPath)) {
         const lockTime = fs.readFileSync(lockPath, 'utf8');
-        if (Date.now() - parseInt(lockTime) < 30000) {
-            console.log("⚠️ Instance déjà active. Attente...");
-            return setTimeout(startBot, 40000);
+        // Si le lock a moins de 2 minutes, c'est peut-être une vraie instance active
+        if (Date.now() - parseInt(lockTime) < 120000) {
+            console.log("⚠️ Instance déjà active. Attente de sécurité...");
+            isConnecting = false;
+            return setTimeout(startBot, 30000);
+        } else {
+            console.log("🧹 Nettoyage d'un lock périmé.");
+            fs.unlinkSync(lockPath);
         }
     }
     fs.writeFileSync(lockPath, Date.now().toString());
@@ -163,42 +178,68 @@ async function startBot() {
         syncFullHistory: false,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         connectTimeoutMs: 60000,
-        keepAliveIntervalMs: 30000
+        keepAliveIntervalMs: 30000,
+        maxRetries: 5
     });
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
-        await uploadAuth();
+        // On n'upload pas à chaque seconde, on laisse le cycle de connexion faire
     });
 
-    sock.ev.on('connection.update', async (update) => {
+     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        if (qr) qrCodeData = await QRCode.toDataURL(qr);
+        
+        if (qr) {
+            qrCodeData = await QRCode.toDataURL(qr);
+        }
 
         if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            isConnecting = false;
+            const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            console.log(`🔌 Connexion fermée (Code: ${statusCode})`);
+
+            // CRUCIAL : On libère le lock pour permettre la reconnexion immédiate
+            if (fs.existsSync(lockPath)) {
+                try { fs.unlinkSync(lockPath); console.log("🔓 Lock libéré pour reconnexion."); } catch(e) {}
+            }
+
             if (statusCode !== DisconnectReason.loggedOut) {
-                setTimeout(startBot, 5000);
+                // Si c'est une erreur 428 ou timeout, on attend un peu plus
+                const retryDelay = (statusCode === 428 || statusCode === 408) ? 10000 : 5000;
+                console.log(`🔄 Re-tentative dans ${retryDelay/1000}s...`);
+                setTimeout(startBot, retryDelay);
+            } else {
+                console.log("❌ Déconnecté. Supprimez le dossier auth.");
             }
         }
         
         if (connection === 'open') {
             qrCodeData = null;
-            console.log('✅ Bot Dèkoungbé connecté');
-            setInterval(() => {
-                if(fs.existsSync(lockPath)) fs.writeFileSync(lockPath, Date.now().toString());
+            isConnecting = false;
+            console.log('✅ BOT DÈKOUNGBÉ CONNECTÉ ET PRÊT');
+            await uploadAuth();
+
+            // On met à jour le lock périodiquement pour prouver qu'on est vivant
+            const lockInterval = setInterval(() => {
+                if (connection === 'open' && fs.existsSync(lockPath)) {
+                    fs.writeFileSync(lockPath, Date.now().toString());
+                } else {
+                    clearInterval(lockInterval);
+                }
             }, 30000);
         }
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        if (type !== 'notify') return;
         for (const msg of messages) {
-            processIncomingMessage(msg).catch(e => console.error(e));
+            processIncomingMessage(msg).catch(e => console.error("Erreur message:", e));
         }
     });
 }
 
-// ==================== LOGIQUE IA & TRAITEMENT ====================
+// ==================== LOGIQUE IA & TRAITEMENT (TEL QUEL) ====================
 async function processIncomingMessage(msg) {
     if (!msg?.message) return;
     const chatId = msg.key.remoteJid;
@@ -211,7 +252,7 @@ async function processIncomingMessage(msg) {
     
     if (!text) return;
 
-    // ========== COMMANDES ADMIN (Exécutées en priorité, même par moi-même) ==========
+    // ========== COMMANDES ADMIN ==========
     if (text.includes('/stop_bot')) {
         await blockUser(chatId);
         return;
@@ -221,13 +262,9 @@ async function processIncomingMessage(msg) {
         return;
     }
 
-    // ========== VÉRIFICATION FILTRES (Après les commandes) ==========
-    // On ignore si le chat est bloqué OU si le message vient du bot lui-même (fromMe)
-    if (isBlocked(chatId) || msg.key.fromMe) {
-        return;
-    }
+    if (isBlocked(chatId) || msg.key.fromMe) return;
 
-    // ========== SUITE DU TRAITEMENT NORMAL ==========
+    // ========== TRAITEMENT ==========
     await sock.readMessages([msg.key]);
     await sock.sendPresenceUpdate("composing", chatId);
     
@@ -237,7 +274,6 @@ async function processIncomingMessage(msg) {
         const history = await loadHistory(chatId);
         const prompt = await getPrompt();
         
-        // Paramètres IA Naturels
         const aiOptions = {
             messages: [{ role: "system", content: prompt }, ...history, { role: "user", content: text }],
             responseFormat: { type: "json_object" },
@@ -254,7 +290,7 @@ async function processIncomingMessage(msg) {
         }
         
         const content = res.choices[0].message.content;
-        const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").replaceAll('*' , '').trim();
         console.log(cleanJson)
         const answer = JSON.parse(cleanJson);
         const finalArray = Array.isArray(answer) ? answer : [answer];
@@ -288,14 +324,9 @@ async function processIncomingMessage(msg) {
             else if (item.type === "plainte") {
                 await insertRow({ chat_id: chatId, role: "assistant", content: `[PLAINTE]: ${JSON.stringify(item)} | ${getBeninTime()}` });
     
-                const rapport = `\n⚠️ *NOUVELLE PLAINTE* ⚠️
-📝 Cause : ${item.cause}
-👤 Numéro WhatsApp : ${msg.key.remoteJidAlt.split('@')[0] || chatId}
-⏰ Heure : ${getBeninTime()}`;
+                const rapport = `\n⚠️ *NOUVELLE PLAINTE* ⚠️\n📝 Cause : ${item.cause}\n👤 Numéro WhatsApp : ${msg.key.remoteJidAlt.split('@')[0] || chatId}\n⏰ Heure : ${getBeninTime()}`;
     
-                for (const num of admin) { 
-                    await sock.sendMessage(num, { text: rapport }); 
-                }
+                for (const num of admin) { await sock.sendMessage(num, { text: rapport }); }
             }
         }
     } catch (e) {
@@ -306,7 +337,6 @@ async function processIncomingMessage(msg) {
     }
 }
 
-
 async function loadHistory(chatId) {
     const { data } = await supabase.from('conversations')
         .select('role, content')
@@ -316,9 +346,4 @@ async function loadHistory(chatId) {
     return (data || []).reverse();
 }
 
-setInterval(async () => {
-    if (sock?.user) { try { await sock.sendPresenceUpdate('available'); } catch { } }
-}, 45000);
-
 startBot();
-

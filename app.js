@@ -178,7 +178,7 @@ async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
 
-    sock = makeWaSocket({
+    sock = makeWASocket({
         version,
         auth: state,
         printQRInTerminal: false,
